@@ -398,3 +398,187 @@ def apply_patch(
         if patch_directive_type is None:
             raise RPMSpecFileParsingError("Unknown patch directive type")
     spec_info.reverse()
+
+
+def find_section_boundaries(spec_info: list[str], section: str, subpackage: str = None) -> tuple:
+    """
+    Find the start and end indices of the specified section in the spec file
+    If subpackage is specified, find the sections instead for that subpackage
+
+    Parameters
+    ----------
+    spec_info : list of str
+        All content of the spec file.
+    section : str
+        Section name (global, description, build, install, etc.).
+    subpackage : str, optional
+        Name of the subpackage. If None, targets the main package.
+
+    Returns
+    -------
+    tuple
+        (starting_index, ending_index) of the section.
+    """
+
+    logger.debug(f"Looking for section '{section}' boundaries" + (f" in subpackage '{subpackage}'" if subpackage else " in main package"))
+    section_marker = f"%{section}"
+
+    # There may be more here that i've missed?
+    section_boundaries = [
+        "%description", "%prep", "%build", "%install", "%check", "%clean",
+        "%files", "%changelog", "%pre", "%post", "%preun", "%postun", "%package",
+        "%triggerin", "%triggerun", "%triggerpostun", "%verifyscript", "%pretrans", "%posttrans"
+    ]
+
+    # The "global" section is special since it's not explicitly labeled as such
+    # in spec file terminology
+    if section == "global":
+        if subpackage is not None:
+            # We're looking for the "global" section of a specific subpackage
+            for i, line in enumerate(spec_info):
+                clean_line = line.strip()
+                if any(clean_line.startswith(pattern) for pattern in [f"%package {subpackage}", f"%package -n {subpackage}"]):
+                    logger.debug(f"Found our subpackage '{subpackage}' at line {i+1}")
+                    starting_index = i + 1  # Start after the package declaration
+                    # Now find where this section ends
+                    for j in range(i + 1, len(spec_info)):
+                        next_line = spec_info[j].strip()
+                        # Section ends at next package or section marker
+                        if next_line.startswith("%package"):
+                            return (starting_index, j - 1)
+                        elif any(next_line.startswith(marker) for marker in section_boundaries if marker != "%package"):
+                            return (starting_index, j - 1)
+                    # If we didn't find an end marker, section runs to the end of file
+                    return (starting_index, len(spec_info) - 1)
+            # If we got here, we didn't find a subpackage
+            pkg_list = [line.strip() for line in spec_info if line.strip().startswith('%package')]
+            raise RPMSpecFileParsingError(f"Couldn't find subpackage '{subpackage}'. Available packages: {pkg_list}")
+        else:
+            # For the main package's global section, we simply need to find the first section marker
+            for i, line in enumerate(spec_info):
+                if any(line.strip().startswith(marker) for marker in section_boundaries):
+                    return (0, i - 1)  # Global section runs from start to first section marker
+
+            # If no section markers found, the whole file is the global section? Doesn't seem right
+            raise RPMSpecFileParsingError("Couldn't find any sections inside the spec. Is this expected?")
+
+    # For "normal" (non-global) sections, we need to keep track of which package we're in
+    current_pkg = None
+    if subpackage is None:
+        in_target_pkg = True
+    else:
+        in_target_pkg = False
+
+    for i, line in enumerate(spec_info):
+        clean_line = line.strip()
+
+        # This logic is a bit confusing, but we need to keep track of which package we are in
+        # The code supports both "%package subpackage" and "%package -n subpackage" definitions
+        if clean_line.startswith("%package"):
+            parts = clean_line.split()
+            if len(parts) >= 3 and parts[1] == "-n":
+                # %package -n format
+                current_pkg = parts[2]
+                in_target_pkg = (current_pkg == subpackage)
+                logger.debug(f"Now in subpackage: {current_pkg} (line {i+1})")
+            elif len(parts) >= 2:
+                # Standard %package format
+                current_pkg = parts[1]
+                in_target_pkg = (current_pkg == subpackage)
+                logger.debug(f"Now in subpackage: {current_pkg} (line {i+1})")
+
+        # Check if this line is our target section
+        if clean_line.startswith(section_marker):
+            # For sections that can specify a subpackage directly (like %files etc)
+            if section_marker in ["%files", "%description", "%pre", "%post", "%preun", "%postun"]:
+                parts = clean_line.split()
+
+                # Check for -n format in the section marker
+                if len(parts) >= 3 and parts[1] == "-n":
+                    section_pkg = parts[2]
+                    if subpackage is not None and section_pkg == subpackage:
+                        starting_index = i
+                        logger.debug(f"Found {section} for subpackage {subpackage} (-n format) at line {i+1}")
+                    else:
+                        continue  # Not our target subpackage
+                elif len(parts) >= 2:
+                    section_pkg = parts[1]
+                    if subpackage is not None and section_pkg == subpackage:
+                        starting_index = i
+                        logger.debug(f"Found {section} for subpackage {subpackage} at line {i+1}")
+                    else:
+                        continue  # Not our target subpackage
+                else:
+                    # No subpackage specified in the section marker
+                    if subpackage is None:
+                        starting_index = i
+                        logger.debug(f"Found {section} for main package at line {i+1}")
+                    else:
+                        continue  # We're looking for a specific subpackage
+            else:
+                # For general sections like %build, %install that apply to a package
+                if in_target_pkg or subpackage is None:
+                    starting_index = i
+                    logger.debug(f"Found {section} at line {i+1}")
+                else:
+                    continue  # Not in our target package
+
+            # Now find where this section ends
+            for j in range(i + 1, len(spec_info)):
+                if any(spec_info[j].strip().startswith(marker) for marker in section_boundaries):
+                    logger.debug(f"Section {section} ends at line {j}")
+                    return (starting_index, j - 1)
+
+            # If we didn't find an end marker, section runs to the end of file
+            logger.debug(f"Section {section} runs to the end of the file")
+            return (starting_index, len(spec_info) - 1)
+
+    # If we get here, we couldn't find the section
+    if subpackage:
+        raise RPMSpecFileParsingError(f"Couldn't find section '{section}' for subpackage '{subpackage}'")
+    else:
+        raise RPMSpecFileParsingError(f"Couldn't find section '{section}' in the spec file")
+
+def add_line_to_section(spec_info: list[str], section: str, location: str,
+                       content: str, subpackage: str = None) -> list[str]:
+    """
+    Add a line to the specified section of the spec file.
+
+    Parameters
+    ----------
+    spec_info : list of str
+        All content of the spec file.
+    section : str
+        Section name (global, description, build, install, etc.).
+    location : str
+        Where to add the line within the section (top or bottom).
+    content : str
+        Content to add.
+    subpackage : str, optional
+        Name of the subpackage. If None, targets the main package.
+
+    Returns
+    -------
+    list of str
+        Updated spec file content.
+    """
+    try:
+        # Find the boundaries of our target section
+        starting_index, ending_index = find_section_boundaries(spec_info, section, subpackage)
+        # Figure out where to put the new content
+        if location.lower() == "top":
+            insert_idx = starting_index + 1
+            # For the main package global section, insert at the very beginning
+            if section == "global" and subpackage is None and starting_index == 0:
+                insert_idx = 0
+        elif location.lower() == "bottom":
+            insert_idx = ending_index + 1
+        else:
+            raise ValueError(f"Invalid location '{location}'. Must be 'top' or 'bottom'")
+        if not content.endswith('\n'):
+            content += '\n'
+        spec_info.insert(insert_idx, content)
+        logger.debug(f"Added content at line {insert_idx+1}")
+        return spec_info
+    except Exception as e:
+        raise RPMSpecFileParsingError(f"Failed to add line to section '{section}': {str(e)}")

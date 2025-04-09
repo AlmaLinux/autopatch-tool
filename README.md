@@ -187,3 +187,24 @@ systemctl status almalinux-autopatch.service
       cwd: "rpms"
 
 ```
+
+##### 1.8 add_line – Add a line
+
+- **Description**: Adds a line to a section within the spec file.
+- **Fields**:
+  - `target`: Path to the “spec” (indicates the spec file).
+  - `section`: Spec file section to target (global, description, build, install, files, etc).
+  - `subpackage`: Optional name of the subpackage to target. If not set, target the main package.
+  - `location`: Location to add content ('top' or 'bottom') to the section.
+  - `content`: Actual content to add (supports multi-lines).
+
+**Example**:
+```yaml
+  - add_line:
+    - target: "spec"
+      section: "install"
+      location: "bottom"
+      content: |
+              # Customized SOURCE550 installation
+              install -p -m 0644 %{SOURCE550} %{buildroot}%{_sysconfdir}/yum.repos.d/
+```

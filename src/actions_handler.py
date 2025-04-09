@@ -506,6 +506,51 @@ class DeleteLineAction(BaseAction):
                 process_lines(file_path, entry.target, find_lines, "", -1)
 
 
+class AddLineEntry(BaseEntry):
+    ALLOWED_KEYS = {
+        "target": str,
+        "section": str,
+        "location": str,
+        "content": str,
+        "subpackage": str,
+    }
+    REQUIRED_KEYS = {"target", "section", "location", "content"}
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._validate_target()
+        self._validate_location()
+
+    def _validate_target(self):
+        if self.target not in ["spec"]:
+            raise ValueError(f"Invalid target '{self.target}'. Currently only 'spec' is supported.")
+
+    def _validate_location(self):
+        if self.location not in ["top", "bottom"]:
+            raise ValueError(f"Invalid location '{self.location}'. Must be 'top' or 'bottom'.")
+
+class AddLineAction(BaseAction):
+    ENTRY_CLASS = AddLineEntry
+
+    def execute(self, package_path: Path):
+        for entry in self.entries:
+            file_path = entry.get_target_file_name(package_path)
+            # Get subpackage if specified
+            subpackage = getattr(entry, 'subpackage', None)
+            logger.info(f"Adding line to {entry.section} section{f' in subpackage {subpackage}' if subpackage is not None else ''} at {entry.location}: {entry.content}")
+            try:
+                file_data = read_file_data(file_path)
+                updated_data = tools.rpm.add_line_to_section(
+                    file_data,
+                    entry.section,
+                    entry.location,
+                    entry.content,
+                    subpackage
+                )
+                write_file_data(file_path, updated_data)
+                logger.info(f"Successfully added line to {entry.section} section")
+            except Exception as e:
+                raise ActionNotAppliedError("AddLineAction", str(e))
 
 class ConfigReader:
     ACTION_MAP = {
@@ -516,6 +561,7 @@ class ConfigReader:
         "delete_files": DeleteFilesAction, # Done
         "add_files": AddFilesAction,
         "run_script": RunScriptAction,
+        "add_line": AddLineAction,
     }
 
     def __init__(self, config_source):
