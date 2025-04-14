@@ -260,7 +260,30 @@ def test_delete_files_action():
             actions:
               - replace:
                   - target: "spec"
+                    rfind: "RHEL"
+                    replace: "MyCustomLinux"
+                    count: -1
+            """,
+            {"replace": [
+                {"target": "spec", "rfind": "RHEL", "replace": "MyCustomLinux", "count": -1},
+            ]},
+            None
+        ),
+        ("""
+            actions:
+              - replace:
+                  - target: "spec"
                     find: "RHEL"
+                    replace: ""
+            """,
+            ValueError,
+            "Value for 'replace' cannot be empty."
+        ),
+        ("""
+            actions:
+              - replace:
+                  - target: "spec"
+                    rfind: "RHEL"
                     replace: ""
             """,
             ValueError,
@@ -274,7 +297,17 @@ def test_delete_files_action():
                     replace: "AL"
             """,
             ValueError,
-            "Value for 'find' cannot be empty."
+            "Value for 'find' or 'rfind' cannot be empty."
+        ),
+        ("""
+            actions:
+              - replace:
+                  - target: "spec"
+                    rfind: ""
+                    replace: "AL"
+            """,
+            ValueError,
+            "Value for 'find' or 'rfind' cannot be empty."
         ),
         ("""
             actions:
@@ -334,7 +367,7 @@ def test_delete_files_action():
                     count: 1
             """,
             ValueError,
-            "Missing required keys: find"
+            "Either 'find' or 'rfind' parameter must be provided"
         ),
         ("""
             actions:

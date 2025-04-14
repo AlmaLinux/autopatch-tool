@@ -288,6 +288,10 @@ class ReplaceEntry(BaseEntry):
             raise ValueError("Either 'find' or 'rfind' parameter must be provided")
         if "find" in kwargs and "rfind" in kwargs:
             raise ValueError("Only one of 'find' or 'rfind' can be provided, not both")
+        # Check if both find and rfind are empty, that the same as REQUIRED_KEYS, but can't be checked in _validate_keys
+        # because they are mutually exclusive
+        if not kwargs.get("find") and not kwargs.get("rfind"):
+            raise ValueError("Value for 'find' or 'rfind' cannot be empty.")
         super().__init__(**kwargs)
         self.count = kwargs.get("count", -1)
 
