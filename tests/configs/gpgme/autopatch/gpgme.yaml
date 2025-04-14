@@ -1,4 +1,42 @@
 actions:
+  - add_line:
+    - target: "spec"
+      section: "global"
+      subpackage: "%{name}pp"
+      location: "top"
+      content: |
+              Test: Top1
+    - target: "spec"
+      section: "global"
+      subpackage: "%{name}pp"
+      location: "top"
+      content: |
+              Test: Top2
+    - target: "spec"
+      section: "global"
+      subpackage: "%{name}pp"
+      location: "top"
+      content: |
+              Test: Top3
+    - target: "spec"
+      section: "global"
+      subpackage: "%{name}pp"
+      location: "bottom"
+      content: |
+              Test: Bottom
+
+    - target: "spec"
+      section: "description"
+      subpackage: "%{name}pp"
+      location: "top"
+      content: |
+              Top
+    - target: "spec"
+      section: "description"
+      subpackage: "%{name}pp"
+      location: "bottom"
+      content: |
+              Bottom
   - replace:
       - target: "spec"
         find: |

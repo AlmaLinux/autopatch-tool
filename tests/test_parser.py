@@ -667,6 +667,91 @@ def test_delete_files_action():
             ValueError,
             "Unknown action type: run_scri"
         ),
+
+        ("""
+            actions:
+              - add_line:
+                  - target: "spec"
+                    section: "install"
+                    location: "top"
+                    content: "echo Hello World"
+            """,
+            {"add_line": [
+                {"target": "spec", "section": "install", "location": "top", "content": "echo Hello World"},
+            ]},
+            None
+        ),
+        ("""
+            actions:
+              - add_line:
+                  - target: "spec"
+                    section: "install"
+                    location: "top"
+                    content: "echo Hello World"
+                    subpackage: "subpackage"
+            """,
+            {"add_line": [
+                {"target": "spec", "section": "install", "location": "top", "content": "echo Hello World", "subpackage": "subpackage"},
+            ]},
+            None
+        ),
+        ("""
+            actions:
+              - add_line:
+                  - target: "spec"
+                    section: "install"
+                    location: ""
+                    content: "echo Hello World"
+                    subpackage: "subpackage"
+            """,
+            ValueError,
+            "Value for 'location' cannot be empty."
+        ),
+        ("""
+            actions:
+              - add_line:
+                  - target: "spec"
+                    section: ""
+                    location: "test"
+                    content: "echo Hello World"
+                    subpackage: "subpackage"
+            """,
+            ValueError,
+            "Value for 'section' cannot be empty."
+        ),
+        ("""
+            actions:
+              - add_line:
+                  - target: ""
+                    section: "install"
+                    location: "test"
+                    content: "echo Hello World"
+                    subpackage: "subpackage"
+            """,
+            ValueError,
+            "Value for 'target' cannot be empty."
+        ),
+        ("""
+            actions:
+              - add_line:
+                  - section: "install"
+                    location: "test"
+                    content: "echo Hello World"
+                    subpackage: "subpackage"
+            """,
+            ValueError,
+            "Missing required keys: target"
+        ),
+        ("""
+            actions:
+              - add_line:
+                  - target: "install"
+                    content: "echo Hello World"
+                    subpackage: "subpackage"
+            """,
+            ValueError,
+            "Missing required keys: section, location"
+        ),
     ]
 )
 def test_config_reader(create_temp_config_file, config_string, expected_actions, expected_error_message):

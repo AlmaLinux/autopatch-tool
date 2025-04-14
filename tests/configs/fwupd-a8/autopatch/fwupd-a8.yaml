@@ -1,14 +1,13 @@
 actions:
+  - add_line:
+    - target: "spec"
+      section: "global"
+      location: "top"
+      content: |
+              %global efi_vendor almalinux
+              %global efidir almalinux
+              %global efi_esp_dir /boot/efi/EFI/%{efidir}
   - replace:
-      - target: "spec"
-        find: "%global glib2_version"
-        replace: |
-                  %global efi_vendor almalinux
-                  %global efidir almalinux
-                  %global efi_esp_dir /boot/efi/EFI/%{efidir}
-
-                  %global glib2_version
-        count: 1
       - target: "spec"
         find: |
           -Dfwupd-efi:efi_sbat_distro_id="rhel" \

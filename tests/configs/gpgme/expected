@@ -81,14 +81,26 @@ Requires:       libgpg-error-devel%{?_isa} >= %{libgpg_error_min_ver}
 %{summary}.
 
 %package -n %{name}pp
+Test: Top3
+
+Test: Top2
+
+Test: Top1
+
 Summary:        C++ bindings/wrapper for GPGME
 Obsoletes:      gpgme-pp < 1.8.0-7
 Provides:       gpgme-pp = %{?epoch:%{epoch}:}%{version}-%{release}
 Provides:       gpgme-pp%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
 Requires:       %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
 
+Test: Bottom
+
 %description -n %{name}pp
+Top
+
 %{summary}.
+
+Bottom
 
 %package -n %{name}pp-devel
 Summary:        Development libraries and header files for %{name}-pp
