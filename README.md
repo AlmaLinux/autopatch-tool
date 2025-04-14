@@ -66,18 +66,19 @@ systemctl status almalinux-autopatch.service
 
 #### 1. actions (Main Block)
 
-##### 1.1 replace_string – String Replacement
+##### 1.1 replace – String Replacement
 
 - **Description**: Replaces a specified strings with anothers.
 - **Fields**:
   - `target`: Path to the file or “spec” (indicates the spec file). Glob patterns are supported.
-  - `find`: String to search for (supports multi-lines).
+  - `find`: String to search for (supports multi-lines, mutually exclusive to `rfind`).
+  - `rfind`: regex string to search for (supports multi-lines, mutually exclusive to `find`).
   - `replace`: String to replace with (supports multi-lines).
   - `count`: Number of replacements (default is -1, which replaces all occurrences).
 
 **Example**:
 ```yaml
-  - replace_string:
+  - replace:
     - target: "*.conf"
       find: "RHEL"
       replace: "AlmaLinux"
@@ -89,6 +90,10 @@ systemctl status almalinux-autopatch.service
       replace: |
             %if 0%{?almalinux}
             AlmaLinux
+    - target: "spec"
+      rfind: "Requires:.*clang.*"
+      replace: "Requires: clang = %{epoch}:%{version}-%{release}"
+      count: 1
 ```
 
 ##### 1.2 delete_line – Line Deletion

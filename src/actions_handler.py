@@ -34,7 +34,7 @@ def write_file_data(path_to_file: Path, data: list[str]):
         f.writelines(f"{line}\n" for line in data)
 
 
-def process_lines(file_path: Path, target: str, find_lines:list[str], replace_lines:list[str], entry_count:int):
+def process_lines(file_path: Path, target: str, find_lines:list[str], replace_lines:list[str], entry_count:int, is_regex: bool = False):
     counter = 0
     i = 0
     file = read_file_data(file_path)
@@ -56,22 +56,36 @@ def process_lines(file_path: Path, target: str, find_lines:list[str], replace_li
                     i += 1
                     continue
             line = file[i]
-            count_in_line = line.count(find_lines[0])
-            if count_in_line > 0:
-                for _ in range(count_in_line):
-                    if entry_count != -1 and counter >= entry_count:
-                        break
-                    if not replace_lines and line.strip() == find_lines[0]:
-                        del file[i]
+            if is_regex:
+                pattern = re.compile(find_lines[0])
+                matches = list(pattern.finditer(line))
+                if matches:
+                    # Process matches in reverse to avoid index issues
+                    for match in reversed(matches):
+                        replacement = "\n".join(replace_lines) if replace_lines else ""
+                        count = 1 if entry_count != -1 else 0
+                        file[i] = pattern.sub(replacement, line, count)
                         change_made = True
-                        logger.debug(f"Deleted line '{find_lines[0]}' at line {i+1}")
-                        i -= 1 
-                        break
-                    else:
-                        file[i] = file[i].replace(find_lines[0], "\n".join(replace_lines) if replace_lines else "", 1)
-                        change_made = True
-                        logger.debug(f"Replaced '{find_lines[0]}' with '{replace_lines}' in line {i+1}")
-                    counter += 1
+                        logger.debug(f"Replaced regex match '{find_lines[0]}' with '{replace_lines}' in line {i+1}")
+                        counter += 1
+            # Non regex processing
+            else:
+                count_in_line = line.count(find_lines[0])
+                if count_in_line > 0:
+                    for _ in range(count_in_line):
+                        if entry_count != -1 and counter >= entry_count:
+                            break
+                        if not replace_lines and line.strip() == find_lines[0]:
+                            del file[i]
+                            change_made = True
+                            logger.debug(f"Deleted line '{find_lines[0]}' at line {i+1}")
+                            i -= 1
+                            break
+                        else:
+                            file[i] = file[i].replace(find_lines[0], "\n".join(replace_lines) if replace_lines else "", 1)
+                            change_made = True
+                            logger.debug(f"Replaced '{find_lines[0]}' with '{replace_lines}' in line {i+1}")
+                        counter += 1
         else:
             stripped_block = [line.lstrip() for line in file[i:i + len(find_lines)]]
             stripped_find_lines = [line.lstrip() for line in find_lines]
@@ -147,8 +161,11 @@ class BaseEntry:
             setattr(self, key, value)
 
     def __repr__(self):
-        attributes = ', '.join(f"{key}={getattr(self, key)}" for key in self.ALLOWED_KEYS)
-        return f"{self.__class__.__name__}({attributes})"
+        attributes = []
+        for key in self.ALLOWED_KEYS:
+            if hasattr(self, key):
+                attributes.append(f"{key}={getattr(self, key)}")
+        return f"{self.__class__.__name__}({', '.join(attributes)})"
 
     def get_file_name(self, package_path: Path, file_name: str, first: bool = True):
         files = list()
@@ -260,12 +277,17 @@ class ReplaceEntry(BaseEntry):
     ALLOWED_KEYS = {
         "target": str,
         "find": str,
+        "rfind": str,
         "replace": str,
         "count": int,
     }
-    REQUIRED_KEYS = {"target", "find", "replace"}
+    REQUIRED_KEYS = {"target", "replace"}
 
     def __init__(self, **kwargs):
+        if "find" not in kwargs and "rfind" not in kwargs:
+            raise ValueError("Either 'find' or 'rfind' parameter must be provided")
+        if "find" in kwargs and "rfind" in kwargs:
+            raise ValueError("Only one of 'find' or 'rfind' can be provided, not both")
         super().__init__(**kwargs)
         self.count = kwargs.get("count", -1)
 
@@ -275,12 +297,16 @@ class ReplaceAction(BaseAction):
     def execute(self, package_path: Path):
         for entry in self.entries:
             file_paths = entry.get_target_file_name(package_path, first=False)
-            find_lines = entry.find.splitlines() if "\n" in entry.find else [entry.find]
+            is_regex = hasattr(entry, 'rfind') and entry.rfind is not None
+            if is_regex:
+                find_lines = entry.rfind.splitlines() if "\n" in entry.rfind else [entry.rfind]
+            else:
+                find_lines = entry.find.splitlines() if "\n" in entry.find else [entry.find]
             replace_lines = entry.replace.splitlines() if "\n" in entry.replace else [entry.replace]
 
             for file_path in file_paths:
                 logger.info(f"Applying: {entry} to {file_path}")
-                process_lines(file_path, entry.target, find_lines, replace_lines, entry.count)
+                process_lines(file_path, entry.target, find_lines, replace_lines, entry.count, is_regex)
 
 
 class ModifyReleaseEntry(BaseEntry):
