@@ -1,8 +1,12 @@
 actions:
   - replace:
       - target: "spec"
-        find: "- start scripts (Red Hat)"
+        rfind: "- start.*Red Hat.*"
         replace: "- start scripts"
+        count: 1
+      - target: "spec"
+        rfind: "Utilities for use in.*applications:"
+        replace: "Test"
         count: 1
 
   - modify_release:

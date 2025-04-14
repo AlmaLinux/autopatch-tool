@@ -73,7 +73,7 @@ Requires(preun): systemd
 Requires(postun): systemd
 
 %description
-Utilities for use in Bluetooth applications:
+Test
 	- hcitool
 	- hciattach
 	- hciconfig
