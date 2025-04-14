@@ -439,7 +439,7 @@ def find_section_boundaries(spec_info: list[str], section: str, subpackage: str 
                 clean_line = line.strip()
                 if any(clean_line.startswith(pattern) for pattern in [f"%package {subpackage}", f"%package -n {subpackage}"]):
                     logger.debug(f"Found our subpackage '{subpackage}' at line {i+1}")
-                    starting_index = i + 1  # Start after the package declaration
+                    starting_index = i  # Start after the package declaration
                     # Now find where this section ends
                     for j in range(i + 1, len(spec_info)):
                         next_line = spec_info[j].strip()
