@@ -61,6 +61,19 @@ After deployment, verify that the service is running properly:
 systemctl status almalinux-autopatch.service
 ```
 
+## RPM packaging
+
+A `Makefile` is provided to faciliate building both a source and binary RPM via `make srpm` or `make rpm`
+
+The `autopatch.spec` file generates a metapackage with several sub packages
+
+- Core functionality is provided by the `autopatch-core` sub package
+  - A helper script `autopatch_standalone.py` is deployed in `%{bindir}/autopatch`
+- Other features are broken out into several other sub packages (`ansible, `git`, `slack`, `web`)
+
+#### Notes
+- The dependency `python3-slackclient' is required for `autopatch-slack`, though this is not currently packaged in EPEL9
+- The dependency `python3-immudb-wrapper` is required for `autopatch-git` which is yet to be packaged (as well as the upstream python3-immudb)
 
 ## Configuration File Format
 
