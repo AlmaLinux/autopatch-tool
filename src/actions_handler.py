@@ -75,12 +75,13 @@ def process_lines(file_path: Path, target: str, find_lines:list[str], replace_li
                     for _ in range(count_in_line):
                         if entry_count != -1 and counter >= entry_count:
                             break
-                        if not replace_lines and line.strip() == find_lines[0]:
-                            del file[i]
-                            change_made = True
-                            logger.debug(f"Deleted line '{find_lines[0]}' at line {i+1}")
-                            i -= 1
-                            break
+                        if not replace_lines:
+                            if line.strip() == find_lines[0]:
+                                del file[i]
+                                change_made = True
+                                logger.debug(f"Deleted line '{find_lines[0]}' at line {i+1}")
+                                i -= 1
+                                break
                         else:
                             file[i] = file[i].replace(find_lines[0], "\n".join(replace_lines) if replace_lines else "", 1)
                             change_made = True
