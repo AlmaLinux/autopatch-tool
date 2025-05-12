@@ -1,0 +1,5 @@
+actions:
+  - delete_line:
+    - target: "spec"
+      lines:
+        - "%setup -q -n redhat-release-%{base_release_version} -T -D -a 4"
