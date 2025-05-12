@@ -8,18 +8,33 @@ from werkzeug.exceptions import (
     InternalServerError,
 )
 
-from tools.logger import logger
-from debranding import (
-    apply_modifications,
-    SUCCESS
-)
-from tools.webserv_tools import (
-    auth_key_required,
-    jsonify_response,
-    get_name_from_payload,
-    get_branch_from_payload,
-)
-import tools.slack
+# First try importing via site-packages path, then try directly from "src"
+try:
+    from autopatch.tools.logger import logger
+    from autopatch.debranding import (
+        apply_modifications,
+        SUCCESS
+    )
+    from autopatch.tools.webserv_tools import (
+        auth_key_required,
+        jsonify_response,
+        get_name_from_payload,
+        get_branch_from_payload,
+    )
+    import autopatch.tools.slack as tools_slack
+except ImportError:
+    from tools.logger import logger
+    from debranding import (
+        apply_modifications,
+        SUCCESS
+    )
+    from tools.webserv_tools import (
+        auth_key_required,
+        jsonify_response,
+        get_name_from_payload,
+        get_branch_from_payload,
+    )
+    import tools.slack as tools_slack
 
 app = Flask('almalinux-debranding-tool')
 
@@ -63,7 +78,7 @@ def debrand_packages():
             branch,
         )
         if result == SUCCESS:
-            tools.slack.success_message(repo_name, branch)
+            tools_slack.success_message(repo_name, branch)
 
         return jsonify_response(
             result={
@@ -73,7 +88,7 @@ def debrand_packages():
         )
     except Exception as err:
         logger.error(err)
-        tools.slack.failed_message(repo_name, branch, str(err))
+        tools_slack.failed_message(repo_name, branch, str(err))
 
 
 @app.errorhandler(InternalServerError)

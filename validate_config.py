@@ -1,10 +1,14 @@
+#!/usr/bin/env python3
 import argparse
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-
-from src.actions_handler import ConfigReader
+# First try importing via site-packages path, then try directly from "src"
+try:
+    from autopatch.actions_handler import ConfigReader
+except ImportError:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+    from src.actions_handler import ConfigReader
 
 def main():
     parser = argparse.ArgumentParser(description="Validate config")

@@ -4,8 +4,13 @@ from enum import Enum
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 
-from tools.logger import logger
-from tools.tools import run_command
+# First try importing via site-packages path, then try directly from "src"
+try:
+    from autopatch.tools.logger import logger
+    from autopatch.tools.tools import run_command
+except ImportError:
+    from tools.logger import logger
+    from tools.tools import run_command
 
 rpmspec_definition = {
     "__python3": "/usr/bin/python3",

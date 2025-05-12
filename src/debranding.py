@@ -1,8 +1,14 @@
 import os
 
-from tools.logger import logger
-from actions_handler import ConfigReader
-from tools.git import GitRepository, GitAlmaLinux, DirectoryManager
+# First try importing via site-packages path, then try directly from "src"
+try:
+    from autopatch.tools.logger import logger
+    from autopatch.actions_handler import ConfigReader
+    from autopatch.tools.git import GitRepository, GitAlmaLinux, DirectoryManager
+except ImportError:
+    from tools.logger import logger
+    from actions_handler import ConfigReader
+    from tools.git import GitRepository, GitAlmaLinux, DirectoryManager
 
 BRANCH_NOT_MODIFIED = "Branch is not modified"
 PACKAGE_NOT_MODIFIED = "Package is not modified"

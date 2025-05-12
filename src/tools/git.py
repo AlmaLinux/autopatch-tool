@@ -5,11 +5,19 @@ import requests
 
 from immudb_wrapper import ImmudbWrapper
 
-from tools.logger import logger
-from tools.tools import (
-    run_command,
-    load_cas_credentials,
-)
+# First try importing via site-packages path, then try directly from "src"
+try:
+    from autopatch.tools.logger import logger
+    from autopatch.tools.tools import (
+        run_command,
+        load_cas_credentials,
+    )
+except ImportError:
+    from tools.logger import logger
+    from tools.tools import (
+        run_command,
+        load_cas_credentials,
+    )
 
 ALLOW_NOTARIZATION = os.getenv("ALLOW_NOTARIZATION", "true").lower() == "true"
 
