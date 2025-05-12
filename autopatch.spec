@@ -106,6 +106,8 @@ Slack notification module for the autopatch tool
 %package web
 Summary:        Web interface for the autopatch tool
 Requires:       %{name}-core = %{version}-%{release}
+Requires:       autopatch-git
+Requires:       autopatch-slack
 Requires:       python3
 Requires:       python3-flask
 Requires:       python3-werkzeug
