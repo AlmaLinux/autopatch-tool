@@ -1,7 +1,7 @@
 Name: redhat-release
 Version: 1.0
 Release: 1%{?dist}
-Summary: Test package for setup line deletion
+Summary: Test package for line deletion matching
 License: GPLv3+
 Source0: %{name}-%{version}.tar.gz
 
