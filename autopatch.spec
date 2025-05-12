@@ -15,7 +15,6 @@ Requires:       %{name}-core = %{version}-%{release}
 Requires:       %{name}-git = %{version}-%{release}
 Requires:       %{name}-slack = %{version}-%{release}
 Requires:       %{name}-web = %{version}-%{release}
-Requires:       %{name}-ansible = %{version}-%{release}
 
 %description
 A tool to automatically patch upstream content for use downstream
@@ -28,10 +27,6 @@ A tool to automatically patch upstream content for use downstream
 
 %install
 %py3_install
-
-# Ansible stuff
-mkdir -p %{buildroot}%{_datadir}/ansible/%{name}
-cp -r ansible/* %{buildroot}%{_datadir}/ansible/%{name}/
 
 # Empty file list for the %{name} metapackage, but we still need to define it
 %files
@@ -120,17 +115,6 @@ Web interface for the autopatch tool
 %{python3_sitelib}/%{name}/tools/webserv_tools.py
 %{python3_sitelib}/%{name}/tools/__pycache__/webserv_tools.cpython*.pyc
 %{python3_sitelib}/%{name}/__pycache__/webserv.cpython*.pyc
-
-%package ansible
-Summary: Ansible playbooks for %{name}
-Requires: %{name}-core = %{version}-%{release}
-Requires: ansible-core
-
-%description ansible
-Ansible playbooks for automating %{name} deployment and configuration
-
-%files ansible
-%{_datadir}/ansible/autopatch/
 
 %changelog
 * Wed May 07 2025 Ben Morrice <ben.morrice@cern.ch> - 1.0.0-1
