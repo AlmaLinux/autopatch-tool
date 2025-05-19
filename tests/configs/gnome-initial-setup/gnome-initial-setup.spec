@@ -1,3 +1,10 @@
+%define autorelease(e:s:pb:n) %{?-p:0.}%{lua:
+    release_number = 15;
+    base_release_number = tonumber(rpm.expand("%{?-b*}%{!?-b:1}"));
+    print(release_number + base_release_number - 1);
+}%{?-e:.%{-e*}}%{?-s:.%{-s*}}%{!?-n:%{?dist}}
+## END: Set by rpmautospec
+
 %global nm_version 1.2
 %global nma_version 1.0
 %global glib_required_version 2.63.1

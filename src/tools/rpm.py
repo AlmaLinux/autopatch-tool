@@ -16,6 +16,8 @@ rpmspec_definition = {
     "dist": "%{nil}",
 }
 
+AUTORELEASE_FINAL_LINE = '}%{?-e:.%{-e*}}%{?-s:.%{-s*}}%{!?-n:%{?dist}}'
+
 class PatchDirectiveType(Enum):
     CLASSIC = 0
     UPPER_P_W_SPACE = 1
