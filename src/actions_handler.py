@@ -338,17 +338,30 @@ class ModifyReleaseAction(BaseAction):
 
             file_path = entry.get_target_file_name(package_path)
             file = read_file_data(file_path)
+            autorelease = False
+            defined_autorelease = False
 
             for i, line in enumerate(file):
+                if '%define autorelease' in line:
+                    defined_autorelease = True
                 if tools.rpm.is_release(line):
                     release = line.split(":")[1].strip()
                     if "%autorelease" in release:
                         logger.info("Skipping setting release as it is set to %autorelease")
+                        autorelease = True
                         break
                     file[i] += entry.suffix
                     break
             else:
                 raise ActionNotAppliedError("ModifyReleaseAction", "Release line not found in spec file")
+            
+            if autorelease and defined_autorelease:
+                for i, line in enumerate(file):
+                    if tools.rpm.AUTORELEASE_FINAL_LINE in line:
+                        file[i] = tools.rpm.AUTORELEASE_FINAL_LINE + entry.suffix
+                        break
+                else:
+                    raise ActionNotAppliedError("ModifyReleaseAction", f"{tools.rpm.AUTORELEASE_FINAL_LINE} not found in spec file")
             write_file_data(file_path, file)
 
 
