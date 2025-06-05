@@ -426,7 +426,7 @@ class ChangelogAction(BaseAction):
             spec_info = read_file_data(file_path)
             if tools.rpm.spec_contains_autochangelog(spec_info):
                 logger.info("Skipping changelog entries as %autochangelog is present")
-                if 'almalinux changes:' not in spec_info[0].lower():
+                if 'almalinux changes:' not in entry.line[0].lower():
                     entry.line[0] = f"AlmaLinux changes: {entry.line[0]}"
                     logger.info(f"Added 'AlmaLinux changes' to the top of the changelog {entry.line[0]}")
                 break
