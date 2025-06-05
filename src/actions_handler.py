@@ -359,6 +359,7 @@ class ModifyReleaseAction(BaseAction):
                 for i, line in enumerate(file):
                     if tools.rpm.AUTORELEASE_FINAL_LINE in line:
                         file[i] = tools.rpm.AUTORELEASE_FINAL_LINE + entry.suffix
+                        logger.info(f"Added suffix '{entry.suffix}' to {tools.rpm.AUTORELEASE_FINAL_LINE}")
                         break
                 else:
                     raise ActionNotAppliedError("ModifyReleaseAction", f"{tools.rpm.AUTORELEASE_FINAL_LINE} not found in spec file")
@@ -460,13 +461,14 @@ class AddFilesEntry(BaseEntry):
         "number": (str, int),
         "modify_spec": bool,
     }
-    REQUIRED_KEYS = {"type", "name", "number"}
+    REQUIRED_KEYS = {"type", "name"}
     VALID_FILE_TYPES = {"patch", "source"}
     # VALID_FILE_TYPES = {"patch"}
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.modify_spec = kwargs.get("modify_spec", True)
+        self.number = kwargs.get("number", "Latest")
         self._validate_file_type()
         self._validate_number()
         self.target = "spec"

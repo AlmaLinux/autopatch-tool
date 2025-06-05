@@ -42,7 +42,6 @@ actions:
         number: 1001
       - type: "patch"
         name: "0002-Change-anaconda-background-color.patch"
-        number: "Latest"
       - type: "patch"
         name: "0003-Remove-visible-Fedora-references.patch"
         number: "Latest"

@@ -612,8 +612,18 @@ def test_delete_files_action():
                   - type: "source"
                     name: "file.tar.gz"
             """,
+            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True}]},
+            None
+        ),
+        ("""
+            actions:
+              - add_files:
+                  - type: "source"
+                    name: "file.tar.gz"
+                    number: "asdf"
+            """,
             ValueError,
-            "Missing required keys: number"
+            "Invalid value for 'number'. Must be an integer or 'Latest'"
         ),
         ("""
             actions:
