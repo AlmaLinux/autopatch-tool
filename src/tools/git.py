@@ -44,13 +44,22 @@ class GitRepository:
     """
     Class for working with git repositories
     """
-    def __init__(self, url, clone: bool = True):
-        self.url = url
-        self.name = self.url.split("/")[-1].replace(".git", "")
+    def __init__(self, url, clone: bool = True, local_repo: bool = False):
+        """
+        Initialize the GitRepository instance.
+        :param url: URL of the git repository
+        :param clone: Whether to clone the repository if it does not exist locally
+        :param local_repo: If True, treat the URL as a local path instead of a remote URL..
+        """
+        self.name = self.url = url
+
+        if not local_repo:
+            self.name = self.url.split("/")[-1].replace(".git", "")
+
         if ALLOW_NOTARIZATION:
             self.immudb_wrapper = ImmudbWrapper(**load_cas_credentials())
 
-        if clone:
+        if clone and not local_repo:
             self.__clone()
 
     def __clone(self):
@@ -113,12 +122,12 @@ class GitRepository:
         try:
             result = self.immudb_wrapper.authenticate_git_repo(self.name)
             matching_tag_is_authenticated = result.get('verified', False)
-        
+
             if not matching_tag_is_authenticated:
                 logger.error(f"Upstream commit is not notarized")
                 raise GitRepositoryError(f"Upstream commit is not notarized")
             matching_immudb_hash = result.get('value', {}).get('Hash')
-        
+
             logger.info(f"Upstream commit is notarized with hash: {matching_immudb_hash}")
         except Exception as e:
             logger.error(f"Failed to authenticate git repo: {e}")

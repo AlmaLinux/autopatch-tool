@@ -153,16 +153,21 @@ systemctl status almalinux-autopatch.service
   - `type`: File type (patch or source).
   - `name`: File name. Should be placed in the `files` directory of the autopatch namespace repository.
   - `number`: Patch/file number or “Latest” (default is “Latest”).
-
+  - `modify_spec`: Optional boolean to modify the spec file (default is true). If false, only adds the file without modifying the spec.
+  - `insert_almalinux_line`: Optional boolean to insert the AlmaLinux line in the spec file (default is true). If false, does not insert the line.
 **Example**:
 ```yaml
   - add_files:
     - type: "patch"
       name: "my_patch.patch"
       number: "Latest"
+      modify_spec: false
+      insert_almalinux_line: false
     - type: "source"
       name: "additional_source.tar.gz"
       number: 1000
+      modify_spec: false
+      insert_almalinux_line: false
 ```
 
 ##### 1.6 delete_files – Deleting Files
