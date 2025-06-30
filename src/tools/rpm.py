@@ -14,6 +14,7 @@ rpmspec_definition = {
     "gometa": "%{nil}",
     "efi_has_alt_arch": "0",
     "dist": "%{nil}",
+    "rhel": "8",
 }
 
 AUTORELEASE_FINAL_LINE = '}%{?-e:.%{-e*}}%{?-s:.%{-s*}}%{!?-n:%{?dist}}'
@@ -316,14 +317,13 @@ def get_ids_of_patches(spec_info: list[str]) -> list[int]:
     return patches
 
 
-def insert_apply_line(spec_info: list[str], directive_type: DirectiveType, insert_index: int) -> None:
+def insert_almalinux_line(spec_info: list[str], directive_type: DirectiveType, insert_index: int) -> None:
     almalinux_block_exists = False
-    
+
     for i, line in enumerate(spec_info):
         if re.match(rf"^# Applying AlmaLinux {directive_type.value}*$", line, re.IGNORECASE):
             almalinux_block_exists = True
     if not almalinux_block_exists:
-        print(f"\n# Applying AlmaLinux {directive_type.value}")
         spec_info.insert(insert_index, f"\n# Applying AlmaLinux {directive_type.value}")
 
 
@@ -333,7 +333,8 @@ def apply_patch(
         directive_type:DirectiveType,
         package_name: str,
         patches_file: bool,
-        patch_number: int = -1
+        patch_number: int = -1,
+        insert_almalinux_line: bool = True
     ) -> None:
     """
     Append changelog_info to project's specfile which apply certain patch.
@@ -343,7 +344,7 @@ def apply_patch(
     spec_info.reverse()
     last_patch_number, last_patch_index, patches_without_numbers = find_last_directive(spec_info, directive_type)
 
-    if not find_almalinux_block(spec_info, directive_type.value):
+    if not find_almalinux_block(spec_info, directive_type.value) and insert_almalinux_line:
         spec_info.insert(last_patch_index, f"\n# AlmaLinux {directive_type.value}")
     # Insert new patch after the last patch
     if patches_without_numbers:
@@ -366,7 +367,8 @@ def apply_patch(
 
         if insert_index is not None:
             if patch_directive_type != PatchDirectiveType.AUTOSETUP and patch_directive_type != PatchDirectiveType.PATCHES_FILE:
-                insert_apply_line(spec_info, directive_type, insert_index)
+                if insert_almalinux_line:
+                    insert_almalinux_line(spec_info, directive_type, insert_index)
 
                 spec_info.insert(
                     insert_index,
@@ -381,7 +383,8 @@ def apply_patch(
                 insert_index = find_setup_line(spec_info)
                 logger.debug(f"Insert index: {insert_index}")
                 if insert_index is not None:
-                    insert_apply_line(spec_info, directive_type, insert_index)
+                    if insert_almalinux_line:
+                        insert_almalinux_line(spec_info, directive_type, insert_index)
 
                     patch_directive_type = PatchDirectiveType.UPPER_P_W_SPACE
                     spec_info.insert(

@@ -460,6 +460,7 @@ class AddFilesEntry(BaseEntry):
         "name": str,
         "number": (str, int),
         "modify_spec": bool,
+        "insert_almalinux_line": bool,
     }
     REQUIRED_KEYS = {"type", "name"}
     VALID_FILE_TYPES = {"patch", "source"}
@@ -472,6 +473,7 @@ class AddFilesEntry(BaseEntry):
         self._validate_file_type()
         self._validate_number()
         self.target = "spec"
+        self.insert_almalinux_line = kwargs.get("insert_almalinux_line", True)
 
     def _validate_file_type(self):
         if self.type not in self.VALID_FILE_TYPES:
@@ -524,7 +526,8 @@ class AddFilesAction(BaseAction):
                     directive_type,
                     package_name,
                     is_patches_file,
-                    entry.number if entry.number != "Latest" else -1
+                    entry.number if entry.number != "Latest" else -1,
+                    entry.insert_almalinux_line
                 )
             self.copy_file_to_package(package_path, entry.name)
 
