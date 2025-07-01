@@ -334,7 +334,7 @@ def apply_patch(
         package_name: str,
         patches_file: bool,
         patch_number: int = -1,
-        insert_almalinux_line: bool = True
+        insert_almalinux: bool = True
     ) -> None:
     """
     Append changelog_info to project's specfile which apply certain patch.
@@ -344,7 +344,7 @@ def apply_patch(
     spec_info.reverse()
     last_patch_number, last_patch_index, patches_without_numbers = find_last_directive(spec_info, directive_type)
 
-    if not find_almalinux_block(spec_info, directive_type.value) and insert_almalinux_line:
+    if not find_almalinux_block(spec_info, directive_type.value) and insert_almalinux:
         spec_info.insert(last_patch_index, f"\n# AlmaLinux {directive_type.value}")
     # Insert new patch after the last patch
     if patches_without_numbers:
@@ -367,7 +367,7 @@ def apply_patch(
 
         if insert_index is not None:
             if patch_directive_type != PatchDirectiveType.AUTOSETUP and patch_directive_type != PatchDirectiveType.PATCHES_FILE:
-                if insert_almalinux_line:
+                if insert_almalinux:
                     insert_almalinux_line(spec_info, directive_type, insert_index)
 
                 spec_info.insert(
@@ -383,7 +383,7 @@ def apply_patch(
                 insert_index = find_setup_line(spec_info)
                 logger.debug(f"Insert index: {insert_index}")
                 if insert_index is not None:
-                    if insert_almalinux_line:
+                    if insert_almalinux:
                         insert_almalinux_line(spec_info, directive_type, insert_index)
 
                     patch_directive_type = PatchDirectiveType.UPPER_P_W_SPACE
