@@ -564,7 +564,7 @@ def test_delete_files_action():
                     name: "file.tar.gz"
                     number: 1
             """,
-            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": 1, "target": "spec", "modify_spec": True}]},
+            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": 1, "target": "spec", "modify_spec": True, "insert_almalinux_line": True}]},
             None
         ),
         ("""
@@ -573,9 +573,10 @@ def test_delete_files_action():
                   - type: "patch"
                     name: "file.tar.gz"
                     number: "Latest"
-                    "modify_spec": False
+                    modify_spec: False
+                    insert_almalinux_line: False
             """,
-            {"add_files": [{"type": "patch", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": False}]},
+            {"add_files": [{"type": "patch", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": False, "insert_almalinux_line": False}]},
             None
         ),
         ("""
@@ -612,8 +613,28 @@ def test_delete_files_action():
                   - type: "source"
                     name: "file.tar.gz"
             """,
-            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True}]},
+            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True, "insert_almalinux_line": True}]},
             None
+        ),
+        ("""
+            actions:
+              - add_files:
+                  - type: "source"
+                    name: "file.tar.gz"
+                    insert_almalinux_line: True
+            """,
+            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True, "insert_almalinux_line": True}]},
+            None
+        ),
+        ("""
+            actions:
+              - add_files:
+                  - type: "source"
+                    name: "file.tar.gz"
+                    insert_almalinux_line: 100
+            """,
+            TypeError,
+            "Invalid type for 'insert_almalinux_line': expected bool, got int"
         ),
         ("""
             actions:
@@ -758,9 +779,21 @@ def test_delete_files_action():
                   - target: "install"
                     content: "echo Hello World"
                     subpackage: "subpackage"
+                    section: "test"
             """,
             ValueError,
-            "Missing required keys: section, location"
+            "Missing required keys: location"
+        ),
+        ("""
+            actions:
+              - add_line:
+                  - target: "install"
+                    content: "echo Hello World"
+                    subpackage: "subpackage"
+                    location: "test"
+            """,
+            ValueError,
+            "Missing required keys: section"
         ),
     ]
 )
