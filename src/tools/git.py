@@ -3,7 +3,6 @@ import shutil
 import os
 import requests
 
-from immudb_wrapper import ImmudbWrapper
 
 from tools.logger import logger
 from tools.tools import (
@@ -12,6 +11,8 @@ from tools.tools import (
 )
 
 ALLOW_NOTARIZATION = os.getenv("ALLOW_NOTARIZATION", "true").lower() == "true"
+if ALLOW_NOTARIZATION:
+    from immudb_wrapper import ImmudbWrapper
 
 class DirectoryManager:
     """
