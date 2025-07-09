@@ -1,0 +1,20 @@
+actions:
+  - replace:
+      - target: "spec"
+        find: "Patch1022: openssh-8.7p1-redhat-help.patch"
+        replace: "#Patch1022: openssh-8.7p1-redhat-help.patch"
+        count: 1
+      - target: "spec"
+        find: "%patch1022 -p1 -b .redhat-help"
+        replace: "#%patch1022 -p1 -b .redhat-help"
+        count: 1
+        
+  - modify_release:
+    - suffix: ".alma.1"
+      enabled: true
+
+  - changelog_entry:
+      - name: "Koichiro Iwao"
+        email: "meta@almalinux.org"
+        line:
+          - "Unpatch Red Hat help message"
