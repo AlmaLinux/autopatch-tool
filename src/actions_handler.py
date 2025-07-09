@@ -340,6 +340,7 @@ class ModifyReleaseAction(BaseAction):
             file = read_file_data(file_path)
             autorelease = False
             defined_autorelease = False
+            action_applied = False
 
             for i, line in enumerate(file):
                 if '%define autorelease' in line:
@@ -349,10 +350,12 @@ class ModifyReleaseAction(BaseAction):
                     if "%autorelease" in release:
                         logger.info("Skipping setting release as it is set to %autorelease")
                         autorelease = True
-                        break
-                    file[i] += entry.suffix
-                    break
-            else:
+                        action_applied = True
+                    else:
+                        file[i] += entry.suffix
+                    action_applied = True
+                    logger.info(f"Added suffix '{entry.suffix}' to release line: {line.strip()}")
+            if not action_applied:
                 raise ActionNotAppliedError("ModifyReleaseAction", "Release line not found in spec file")
             
             if autorelease and defined_autorelease:
