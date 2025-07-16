@@ -247,17 +247,21 @@ def get_patch_directive_type(line: str) -> PatchDirectiveType:
     return None
 
 
-def generate_patch_apply_line(patch_number: str, patch_stem: str, patch_directive_type: PatchDirectiveType) -> str:
+def generate_patch_apply_line(patch_number: str, patch_stem: str, patch_directive_type: PatchDirectiveType, no_backup: bool) -> str:
+    apply_line = ""
     if patch_directive_type == PatchDirectiveType.CLASSIC:
-        return f"""%patch{patch_number} -p1 -b .{patch_stem}"""
+        apply_line = f"""%patch{patch_number} -p1"""
     elif patch_directive_type == PatchDirectiveType.UPPER_P_W_SPACE:
-        return f"""%patch -P {patch_number} -p1 -b .{patch_stem}"""
+        apply_line = f"""%patch -P {patch_number} -p1"""
     elif patch_directive_type == PatchDirectiveType.UPPER_P_N_SPACE:
-        return f"""%patch -P{patch_number} -p1 -b .{patch_stem}"""
+        apply_line = f"""%patch -P{patch_number} -p1"""
     elif patch_directive_type == PatchDirectiveType.KERNEL:
-        return f"""ApplyPatch {patch_stem}.patch"""
+        apply_line = f"""ApplyPatch {patch_stem}.patch"""
     else:
         raise RPMSpecFileParsingError("Unknown patch directive type")
+    if not no_backup and patch_directive_type != PatchDirectiveType.KERNEL:
+        apply_line += f" -b .{patch_stem}"
+    return apply_line
 
 
 def define_type_patch_directive_type(spec_info: list[str], package_name: str, patches_file: bool) -> PatchDirectiveType:
@@ -334,7 +338,8 @@ def apply_patch(
         package_name: str,
         patches_file: bool,
         patch_number: int = -1,
-        insert_almalinux: bool = True
+        insert_almalinux: bool = True,
+        no_backup: bool = False,
     ) -> None:
     """
     Append changelog_info to project's specfile which apply certain patch.
@@ -375,7 +380,8 @@ def apply_patch(
                     generate_patch_apply_line(
                         new_patch_number,
                         ''.join(patch_name.split('.')[:-1]),
-                        patch_directive_type
+                        patch_directive_type,
+                        no_backup
                     )
                 )
         else:
@@ -392,7 +398,8 @@ def apply_patch(
                         generate_patch_apply_line(
                                 new_patch_number,
                                 ''.join(patch_name.split('.')[:-1]),
-                                patch_directive_type
+                                patch_directive_type,
+                                no_backup
                             )
                         )
                 else:

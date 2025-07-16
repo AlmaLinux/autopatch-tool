@@ -42,13 +42,14 @@ actions:
       - type: "patch" # file type (patch or source, other types may be added in the future)
         name: "my_patch.patch" # patch name
         number: "Latest" # number - either the patch number or "Latest" for automatic patch detection (default is "Latest")
-        insert_almalinux_line: true # whether to insert the patch application line in the spec file, default is "true"
+        insert_almalinux_line: true # whether to insert the patch application line in the spec file, default is "true". Has more priority than global parameter "apply_almalinux_line"
         modify_spec: false
+        no_backup: false # adds "-b" option to the patch application line, default is "True", no effect for source files
       - type: "source"
         name: "my_new_source.tar.gz" # source file name
         number: "Latest" # number - either the source number or "Latest" for automatic source detection (default is "Latest")
         modify_spec: false # whether to modify the spec file, default is "true"
-        insert_almalinux_line: true # whether to insert the patch application line in the spec file, default is "true"
+        insert_almalinux_line: true # whether to insert the patch application line in the spec file, default is "true". Has more priority than global parameter "apply_almalinux_line"
 
   # delete_files - list of files to delete.
   - delete_files:

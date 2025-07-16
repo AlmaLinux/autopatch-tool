@@ -564,7 +564,7 @@ def test_delete_files_action():
                     name: "file.tar.gz"
                     number: 1
             """,
-            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": 1, "target": "spec", "modify_spec": True, "insert_almalinux_line": True}]},
+            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": 1, "target": "spec", "modify_spec": True, "insert_almalinux_line": True, "no_backup": False}]},
             None
         ),
         ("""
@@ -575,8 +575,9 @@ def test_delete_files_action():
                     number: "Latest"
                     modify_spec: False
                     insert_almalinux_line: False
+                    no_backup: True
             """,
-            {"add_files": [{"type": "patch", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": False, "insert_almalinux_line": False}]},
+            {"add_files": [{"type": "patch", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": False, "insert_almalinux_line": False, "no_backup": True}]},
             None
         ),
         ("""
@@ -613,7 +614,7 @@ def test_delete_files_action():
                   - type: "source"
                     name: "file.tar.gz"
             """,
-            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True, "insert_almalinux_line": True}]},
+            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True, "insert_almalinux_line": True, "no_backup": False}]},
             None
         ),
         ("""
@@ -623,7 +624,7 @@ def test_delete_files_action():
                     name: "file.tar.gz"
                     insert_almalinux_line: True
             """,
-            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True, "insert_almalinux_line": True}]},
+            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True, "insert_almalinux_line": True, "no_backup": False}]},
             None
         ),
         ("""

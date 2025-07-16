@@ -45,8 +45,6 @@ Patch28: hplip-colorlaserjet-mfp-m278-m281.patch
 Patch30: hplip-typo.patch
 Patch31: hplip-keyserver.patch
 Patch32: hplip-covscan.patch
-
-# AlmaLinux Patch
 Patch100: hplip-3.18.4-gpgdir-rules-gpg-server.patch
 
 Requires: %{name}-libs%{?_isa} = %{version}-%{release}
@@ -256,9 +254,7 @@ rm prnt/hpcups/ErnieFilter.{cpp,h} prnt/hpijs/ernieplatform.h
 
 # 1602547 - Please review important issues found by covscan in "hplip-3.18.4-2.el8+7" package
 %patch32 -p1 -b .covscan
-
-# Applying AlmaLinux Patch
-%patch100 -p1 -b .hplip-3184-gpgdir-rules-gpg-server
+%patch100 -p1
 
 sed -i.duplex-constraints \
     -e 's,\(UIConstraints.* \*Duplex\),//\1,' \
