@@ -64,3 +64,4 @@ actions:
     - type: "patch"
       name: "test.patch"
       number: 1000
+      no_backup: true

@@ -213,9 +213,11 @@ actions:
       - type: "patch"
         name: "0002-Bring-back-deprecated-pci-ids-to-megaraid_sas-driver.patch"
         number: 2002
+        no_backup: true
       - type: "patch"
         name: "0003-Bring-back-deprecated-pci-ids-to-mptsas-mptspi-drive.patch"
         number: 2003
+        no_backup: false
       - type: "patch"
         name: "0004-Bring-back-deprecated-pci-ids-to-hpsa-driver.patch"
         number: 2004

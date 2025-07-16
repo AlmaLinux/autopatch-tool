@@ -464,6 +464,7 @@ class AddFilesEntry(BaseEntry):
         "number": (str, int),
         "modify_spec": bool,
         "insert_almalinux_line": bool,
+        "no_backup": bool,
     }
     REQUIRED_KEYS = {"type", "name"}
     VALID_FILE_TYPES = {"patch", "source"}
@@ -477,6 +478,7 @@ class AddFilesEntry(BaseEntry):
         self._validate_number()
         self.target = "spec"
         self.insert_almalinux_line = kwargs.get("insert_almalinux_line", True)
+        self.no_backup = kwargs.get("no_backup", False)
 
     def _validate_file_type(self):
         if self.type not in self.VALID_FILE_TYPES:
@@ -530,7 +532,8 @@ class AddFilesAction(BaseAction):
                     package_name,
                     is_patches_file,
                     entry.number if entry.number != "Latest" else -1,
-                    entry.insert_almalinux_line
+                    entry.insert_almalinux_line,
+                    entry.no_backup
                 )
             self.copy_file_to_package(package_path, entry.name)
 

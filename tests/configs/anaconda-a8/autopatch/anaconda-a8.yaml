@@ -29,6 +29,7 @@ actions:
       - type: "patch"
         name: "anaconda-almalinux-installer-colors.patch"
         number: 1000
+        no_backup: true
       - type: "patch"
         name: "anaconda-almalinux-disable-subscription.patch"
         number: "Latest"

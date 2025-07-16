@@ -15,4 +15,5 @@ actions:
       - type: "patch"
         name: "hplip-3.21.2-gpgdir-rules-gpg-server.patch"
         number: 100
-
+        no_backup: false
+        insert_almalinux_line: true
