@@ -1,3 +1,6 @@
+parameters:
+  insert_almalinux_line: false
+
 actions:
   - replace:
       - target: "spec"
@@ -26,19 +29,25 @@ actions:
       - type: "source"
         name: "almalinux.conf"
         number: "Latest"
+        insert_almalinux_line: true
       - type: "patch"
         name: "anaconda-almalinux-installer-colors.patch"
         number: 1000
         no_backup: true
+        insert_almalinux_line: true
       - type: "patch"
         name: "anaconda-almalinux-disable-subscription.patch"
         number: "Latest"
+        insert_almalinux_line: true
       - type: "patch"
         name: "anaconda-almalinux-disable-cdn-radiobutton.patch"
         number: "Latest"
+        insert_almalinux_line: true
       - type: "patch"
         name: "anaconda-almalinux-remove-visible-rh-references.patch"
         number: "Latest"
+        insert_almalinux_line: true
       - type: "patch"
         name: "anaconda-almalinux-add-minimal-repo.patch"
         number: 1006
+        insert_almalinux_line: true

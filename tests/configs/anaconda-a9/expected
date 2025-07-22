@@ -11,8 +11,6 @@ URL:     http://fedoraproject.org/wiki/Anaconda
 # ./autogen.sh
 # make dist
 Source0: https://github.com/rhinstaller/%{name}/releases/download/%{name}-%{version}/%{name}-%{version}.tar.bz2
-
-# AlmaLinux Patch
 Patch1000: anaconda-almalinux-installer-colors.patch
 Patch1001: anaconda-almalinux-disable-subscription.patch
 Patch1002: anaconda-almalinux-disable-cdn-radiobutton.patch

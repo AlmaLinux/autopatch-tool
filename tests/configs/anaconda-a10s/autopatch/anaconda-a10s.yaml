@@ -1,3 +1,6 @@
+parameters:
+  insert_almalinux_line: false
+
 actions:
   - replace:
       - target: "spec"
