@@ -9,7 +9,7 @@ def get_slack_token(
     path: str = '~/.almalinux-debranding-slack/token'
 ) -> str:
     try:
-        with open(os.path.expanduser(path)) as f:
+        with open(os.path.expanduser(path), encoding="utf-8") as f:
             content = yaml.safe_load(f)
             return content['token']
     except OSError:

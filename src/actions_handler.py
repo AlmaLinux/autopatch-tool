@@ -1,11 +1,12 @@
-from dataclasses import dataclass
-
-import yaml
-from pathlib import Path
+# pylint: disable=too-few-public-methods
 import datetime
 import textwrap
 import shutil
 import re
+from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
 
 from tools.logger import logger
 from tools.tools import run_command
@@ -23,7 +24,8 @@ class GlobalParameters:
 
 class ActionNotAppliedError(Exception):
     """
-    Raised when the action verification fails, indicating that the expected changes were not applied.
+    Raised when the action verification fails,
+    indicating that the expected changes were not applied.
     """
     def __init__(self, action_name: str, reason: str = "Verification failed"):
         self.action_name = action_name
@@ -33,16 +35,16 @@ class ActionNotAppliedError(Exception):
 
 def read_file_data(path_to_file: Path) -> list[str]:
     logger.debug(f"Reading file: {path_to_file}")
-    with open(path_to_file, "r") as f:
+    with open(path_to_file, "r", encoding="utf-8") as f:
         info = [line.rstrip("\n") for line in f.readlines()]
-        
+
     if info is None or not info:
         raise ValueError("File is empty")
     return info
 
 def write_file_data(path_to_file: Path, data: list[str]):
     logger.debug(f"Writing file: {path_to_file}")
-    with open(path_to_file, "w") as f:
+    with open(path_to_file, "w", encoding="utf-8") as f:
         f.writelines(f"{line}\n" for line in data)
 
 
@@ -64,7 +66,10 @@ def process_lines(file_path: Path, target: str, find_lines:list[str], replace_li
         if len(find_lines) == 1:
             # Skip comments in spec file only with target as spec and find_lines as single line
             if target == "spec":
-                if tools.rpm.is_spec_comment(file[i]) and not tools.rpm.is_spec_comment(find_lines[0]):
+                if (
+                    tools.rpm.is_spec_comment(file[i])
+                    and not tools.rpm.is_spec_comment(find_lines[0])
+                ):
                     i += 1
                     continue
             line = file[i]
@@ -73,7 +78,7 @@ def process_lines(file_path: Path, target: str, find_lines:list[str], replace_li
                 matches = list(pattern.finditer(line))
                 if matches:
                     # Process matches in reverse to avoid index issues
-                    for match in reversed(matches):
+                    for _ in reversed(matches):
                         replacement = "\n".join(replace_lines) if replace_lines else ""
                         count = 1 if entry_count != -1 else 0
                         file[i] = pattern.sub(replacement, line, count)
@@ -95,7 +100,11 @@ def process_lines(file_path: Path, target: str, find_lines:list[str], replace_li
                                 i -= 1
                                 break
                         else:
-                            file[i] = file[i].replace(find_lines[0], "\n".join(replace_lines) if replace_lines else "", 1)
+                            file[i] = file[i].replace(
+                                find_lines[0],
+                                "\n".join(replace_lines) if replace_lines else "",
+                                1
+                            )
                             change_made = True
                             logger.debug(f"Replaced '{find_lines[0]}' with '{replace_lines}' in line {i+1}")
                         counter += 1
@@ -124,16 +133,22 @@ def process_lines(file_path: Path, target: str, find_lines:list[str], replace_li
                 i += len(replace_lines) - 1
         i += 1
 
-    if not replace_lines and not change_made:
-        raise ActionNotAppliedError("DeleteAction", f"No changes made for '{find_lines}' in {file_path}")
-    elif not change_made:
-        raise ActionNotAppliedError("ReplaceAction", f"No changes made for '{find_lines}' in {file_path}")
+    if not change_made:
+        action_type = "DeleteAction" if not replace_lines else "ReplaceAction"
+        raise ActionNotAppliedError(
+            action_type,
+            f"No changes made for '{find_lines}' in {file_path}"
+        )
 
     write_file_data(file_path, file)
 
 
 # Base Entry class
 class BaseEntry:
+    # pylint: disable=no-member
+    """
+    Base class for all entries.
+    """
     ALLOWED_KEYS = {}
     REQUIRED_KEYS = set()
 
@@ -156,9 +171,14 @@ class BaseEntry:
             actual_value = kwargs.get(key)
             if actual_value is not None:
                 # Check if expected_type is a tuple (multiple types) or a single type
-                if not isinstance(actual_value, expected_type if isinstance(expected_type, tuple) else (expected_type,)):
+                if not isinstance(
+                    actual_value,
+                    expected_type if isinstance(expected_type, tuple) else (expected_type,)
+                ):
                     expected_type_names = (
-                        ', '.join(t.__name__ for t in expected_type) if isinstance(expected_type, tuple) else expected_type.__name__
+                        ', '.join(t.__name__ for t in expected_type)
+                        if isinstance(expected_type, tuple)
+                        else expected_type.__name__
                     )
                     raise TypeError(
                         f"Invalid type for '{key}': expected {expected_type_names}, got {type(actual_value).__name__}"
@@ -182,7 +202,7 @@ class BaseEntry:
         return f"{self.__class__.__name__}({', '.join(attributes)})"
 
     def get_file_name(self, package_path: Path, file_name: str, first: bool = True):
-        files = list()
+        files = []
 
         for f in Path(package_path).rglob(file_name):
             try:
@@ -191,7 +211,7 @@ class BaseEntry:
                     continue
             except ValueError:
                 pass
-            
+
             files.append(f)
 
         if not files:
@@ -203,18 +223,23 @@ class BaseEntry:
         if 'spec' == self.target:
             spec_files = self.get_file_name(package_path, "*.spec", first=False)
             if len(spec_files) > 1:
-                raise Exception(f"More than one .spec file present in {package_path}")
+                raise RuntimeError(f"More than one .spec file present in {package_path}")
             if len(spec_files) == 0:
-                raise Exception(f"No .spec file present in {package_path}")
+                raise FileNotFoundError(f"No .spec file present in {package_path}")
             return spec_files[0] if first else spec_files
         return self.get_file_name(package_path, self.target, first)
 
 
 # Base Action class
 class BaseAction:
+    """
+    Base class for all actions.
+    """
     ENTRY_CLASS = None
 
-    def __init__(self, data, config_source: Path = None, global_parameters: dict = {}):
+    def __init__(self, data, config_source: Path = None, global_parameters: dict = None):
+        if not global_parameters:
+            global_parameters = {}
         self.global_parameters = GlobalParameters(
             insert_almalinux_line=global_parameters.get("insert_almalinux_line", True)
         )
@@ -226,7 +251,9 @@ class BaseAction:
         entries = []
         for entry_data in data if isinstance(data, list) else [data]:
             if not isinstance(entry_data, dict):
-                raise ValueError(f"Invalid format: expected a dictionary, got {type(entry_data).__name__}")
+                raise ValueError(
+                    f"Invalid format: expected a dictionary, got {type(entry_data).__name__}"
+                )
             logger.debug(f"Processing entry data: {entry_data}")
             entry = self.ENTRY_CLASS(self.global_parameters, **entry_data)
             entries.append(entry)
@@ -238,6 +265,10 @@ class BaseAction:
 
 # Actions and Entries
 class DeleteFilesEntry(BaseEntry):
+    # pylint: disable=no-member
+    """
+    Entry class for the DeleteFilesAction.
+    """
     ALLOWED_KEYS = {
         "file_name": str
     }
@@ -248,6 +279,9 @@ class DeleteFilesEntry(BaseEntry):
         self.target = self.file_name
 
 class DeleteFilesAction(BaseAction):
+    """
+    Action class for the DeleteFilesAction.
+    """
     ENTRY_CLASS = DeleteFilesEntry
 
     def _find_metadata_source_file(self, package_path: Path):
@@ -270,7 +304,7 @@ class DeleteFilesAction(BaseAction):
                 break
             # example if line:
             # b2620c36bd23ca699567fd4e4add039ee4375247 SOURCES/DBXUpdate-20100307-x64.cab
-            elif re.match(rf"[0-9a-f]{{40}} {file_name}", line):
+            if re.match(rf"[0-9a-f]{{40}} {file_name}", line):
                 del metadata[i]
                 break
         write_file_data(metadata_file, metadata)
@@ -281,12 +315,15 @@ class DeleteFilesAction(BaseAction):
             if file_path.exists():
                 file_path.unlink()
                 logger.debug(f"Deleted file: {file_path}")
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
             if self._find_metadata_source_file(package_path):
                 self._delete_file_from_source_file(entry.file_name, package_path)
                 logger.debug(f"Deleted file from metadata: {entry.file_name}")
             else:
-                raise ActionNotAppliedError("DeleteFilesAction", f"File not found: {file_path}")
+                raise ActionNotAppliedError(
+                    "DeleteFilesAction",
+                    f"File not found: {file_path}"
+                ) from exc
 
     def execute(self, package_path: Path):
         for entry in self.entries:
@@ -294,6 +331,10 @@ class DeleteFilesAction(BaseAction):
 
 
 class ReplaceEntry(BaseEntry):
+    # pylint: disable=no-member
+    """
+    Entry class for the ReplaceAction.
+    """
     ALLOWED_KEYS = {
         "target": str,
         "find": str,
@@ -317,6 +358,9 @@ class ReplaceEntry(BaseEntry):
         self.count = kwargs.get("count", -1)
 
 class ReplaceAction(BaseAction):
+    """
+    Action class for the ReplaceAction.
+    """
     ENTRY_CLASS = ReplaceEntry
 
     def execute(self, package_path: Path):
@@ -342,6 +386,10 @@ class ReplaceAction(BaseAction):
 
 
 class ModifyReleaseEntry(BaseEntry):
+    # pylint: disable=no-member
+    """
+    Entry class for the ModifyReleaseAction.
+    """
     ALLOWED_KEYS = {
         "suffix": str,
         "enabled": bool,
@@ -354,6 +402,9 @@ class ModifyReleaseEntry(BaseEntry):
         self.target = "spec"
 
 class ModifyReleaseAction(BaseAction):
+    """
+    Action class for the ModifyReleaseAction.
+    """
     ENTRY_CLASS = ModifyReleaseEntry
 
     def execute(self, package_path: Path):
@@ -383,8 +434,11 @@ class ModifyReleaseAction(BaseAction):
                     action_applied = True
                     logger.info(f"Added suffix '{entry.suffix}' to release line: {line.strip()}")
             if not action_applied:
-                raise ActionNotAppliedError("ModifyReleaseAction", "Release line not found in spec file")
-            
+                raise ActionNotAppliedError(
+                    "ModifyReleaseAction",
+                    "Release line not found in spec file"
+                )
+
             if autorelease and defined_autorelease:
                 for i, line in enumerate(file):
                     if tools.rpm.AUTORELEASE_FINAL_LINE in line:
@@ -392,11 +446,18 @@ class ModifyReleaseAction(BaseAction):
                         logger.info(f"Added suffix '{entry.suffix}' to {tools.rpm.AUTORELEASE_FINAL_LINE}")
                         break
                 else:
-                    raise ActionNotAppliedError("ModifyReleaseAction", f"{tools.rpm.AUTORELEASE_FINAL_LINE} not found in spec file")
+                    raise ActionNotAppliedError(
+                        "ModifyReleaseAction",
+                        f"{tools.rpm.AUTORELEASE_FINAL_LINE} not found in spec file"
+                    )
             write_file_data(file_path, file)
 
 
 class RunScriptEntry(BaseEntry):
+    # pylint: disable=no-member
+    """
+    Entry class for the RunScriptAction.
+    """
     ALLOWED_KEYS = {
         "script": str,
         "cwd": str
@@ -408,13 +469,16 @@ class RunScriptEntry(BaseEntry):
         self.cwd = kwargs.get("cwd", "rpms")
         self.target = ""
         self.verify_cwd()
-    
+
     def verify_cwd(self):
         if self.cwd in ["rpms", "autopatch"]:
             return
         raise ValueError(f"Invalid value for 'cwd'. Must be 'rpms' or 'autopatch'")
 
 class RunScriptAction(BaseAction):
+    """
+    Action class for the RunScriptAction.
+    """
     ENTRY_CLASS = RunScriptEntry
 
     def execute(self, package_path: Path):
@@ -427,11 +491,15 @@ class RunScriptAction(BaseAction):
 
             if not script_file.exists():
                 raise FileNotFoundError(f"Script file '{script_file}' does not exist")
-            
+
             run_command(["bash", str(script_file)], cwd=entry.cwd, raise_on_failure=True)
 
 
 class ChangelogEntry(BaseEntry):
+    # pylint: disable=no-member
+    """
+    Entry class for the ChangelogAction.
+    """
     ALLOWED_KEYS = {
         "name": str,
         "email": str,
@@ -446,6 +514,10 @@ class ChangelogEntry(BaseEntry):
         self.target = "spec"
 
 class ChangelogAction(BaseAction):
+    # pylint: disable=too-many-locals
+    """
+    Action class for the ChangelogAction.
+    """
     ENTRY_CLASS = ChangelogEntry
 
     def execute(self, package_path: Path):
@@ -475,16 +547,25 @@ class ChangelogAction(BaseAction):
                     changelog_msg_lines = []
                     for changelog_entry in entry.line:
                         changelog_msg_lines.extend(
-                            textwrap.wrap(changelog_entry, 80, initial_indent="- ", subsequent_indent="  ")
+                            textwrap.wrap(
+                                    changelog_entry,
+                                    80,
+                                    initial_indent="- ",
+                                    subsequent_indent="  "
+                                )
                         )
                     spec_info.insert(i + 2, "\n".join(changelog_msg_lines) + "\n")
-            
+
             write_file_data(file_path, spec_info)
         # Reverse the entries back to original order
         self.entries.reverse()
 
 
 class AddFilesEntry(BaseEntry):
+    # pylint: disable=no-member
+    """
+    Entry class for the AddFilesAction.
+    """
     ALLOWED_KEYS = {
         "type": str,
         "name": str,
@@ -504,12 +585,17 @@ class AddFilesEntry(BaseEntry):
         self._validate_file_type()
         self._validate_number()
         self.target = "spec"
-        self.insert_almalinux_line = kwargs.get("insert_almalinux_line", global_parameters.insert_almalinux_line)
+        self.insert_almalinux_line = kwargs.get(
+            "insert_almalinux_line",
+            global_parameters.insert_almalinux_line
+        )
         self.no_backup = kwargs.get("no_backup", False)
 
     def _validate_file_type(self):
         if self.type not in self.VALID_FILE_TYPES:
-            raise ValueError(f"Invalid file type '{self.type}'. Allowed types: {', '.join(self.VALID_FILE_TYPES)}")
+            raise ValueError(
+                f"Invalid file type '{self.type}'. Allowed types: {', '.join(self.VALID_FILE_TYPES)}"
+            )
 
     def _validate_number(self):
         if isinstance(self.number, str):
@@ -519,6 +605,9 @@ class AddFilesEntry(BaseEntry):
             raise ValueError("Invalid value for 'number'. Must be greater than 0.")
 
 class AddFilesAction(BaseAction):
+    """
+    Action class for the AddFilesAction.
+    """
     ENTRY_CLASS = AddFilesEntry
 
     def copy_file_to_package(self, package_path: Path, file_name_to_copy: str):
@@ -530,7 +619,10 @@ class AddFilesAction(BaseAction):
             target_file.parent.mkdir(parents=True, exist_ok=True)
 
         if target_file.exists():
-            raise ActionNotAppliedError("AddFilesAction", f"File '{file_name_to_copy}' already exists in package")
+            raise ActionNotAppliedError(
+                "AddFilesAction",
+                f"File '{file_name_to_copy}' already exists in package"
+            )
 
         shutil.copy(source_file, target_file)
         logger.info(f"Copied file '{source_file}' to '{target_file}'")
@@ -539,12 +631,11 @@ class AddFilesAction(BaseAction):
         for entry in self.entries:
             package_name = package_path.name
             is_patches_file = any(Path(package_path).rglob("*.patches"))
+            directive_type = tools.rpm.DirectiveType.SOURCE
             if entry.type == "patch":
                 directive_type = tools.rpm.DirectiveType.PATCH
                 if is_patches_file:
                     entry.target = entry.get_file_name(package_path, "*.patches").name
-            elif entry.type == "source":
-                directive_type = tools.rpm.DirectiveType.SOURCE
 
             spec_file_path = entry.get_target_file_name(package_path)
             spec = read_file_data(spec_file_path)
@@ -568,6 +659,10 @@ class AddFilesAction(BaseAction):
 
 
 class DeleteLineEntry(BaseEntry):
+    # pylint: disable=no-member
+    """
+    Entry class for the DeleteLineAction.
+    """
     ALLOWED_KEYS = {
         "target": str,
         "lines": list,
@@ -589,6 +684,10 @@ class DeleteLineAction(BaseAction):
 
 
 class AddLineEntry(BaseEntry):
+    # pylint: disable=no-member
+    """
+    Entry class for the AddLineAction.
+    """
     ALLOWED_KEYS = {
         "target": str,
         "section": str,
@@ -656,7 +755,7 @@ class ConfigReader:
 
     def _load_config(self):
         if isinstance(self.config_source, Path):
-            with open(self.config_source, "r") as f:
+            with open(self.config_source, "r", encoding="utf-8") as f:
                 return yaml.safe_load(f)
         elif hasattr(self.config_source, "read"):
             return yaml.safe_load(self.config_source)
@@ -701,7 +800,7 @@ class ConfigReader:
     def apply_actions(self, package_path: Path):
         for action in self.actions:
             action.execute(Path(package_path))
-    
+
     def get_changelog(self):
         """
         Returns a list of chagelog entries, email and name of latest entry
@@ -720,7 +819,7 @@ class ConfigReader:
                     email = action_entry.email
                 changelog.extend(action_entry.line)
         return changelog, name, email
-    
+
     def get_release_suffix(self):
         """
         Returns release suffix from modify_release action

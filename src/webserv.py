@@ -8,11 +8,11 @@ from werkzeug.exceptions import (
     InternalServerError,
 )
 
-from tools.logger import logger
 from debranding import (
     apply_modifications,
     SUCCESS
 )
+from tools.logger import logger
 from tools.webserv_tools import (
     auth_key_required,
     jsonify_response,
