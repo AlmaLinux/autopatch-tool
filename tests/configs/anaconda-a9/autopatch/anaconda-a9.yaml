@@ -1,3 +1,6 @@
+parameters:
+  insert_almalinux_line: true
+
 actions:
   - replace:
       - target: "spec"
@@ -24,15 +27,20 @@ actions:
       - type: "patch"
         name: "anaconda-almalinux-installer-colors.patch"
         number: 1000
+        insert_almalinux_line: false
       - type: "patch"
         name: "anaconda-almalinux-disable-subscription.patch"
         number: "Latest"
+        insert_almalinux_line: false
       - type: "patch"
         name: "anaconda-almalinux-disable-cdn-radiobutton.patch"
         number: "Latest"
+        insert_almalinux_line: false
       - type: "patch"
         name: "anaconda-almalinux-remove-visible-fedora-references.patch"
         number: "Latest"
+        insert_almalinux_line: false
       - type: "patch"
         name: "anaconda-almalinux-add-minimal-repo.patch"
         number: "Latest"
+        insert_almalinux_line: false

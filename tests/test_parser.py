@@ -11,7 +11,8 @@ from actions_handler import (
     DeleteLineAction,
     ChangelogAction,
     DeleteFilesAction,
-    ConfigReader
+    ConfigReader,
+    GlobalParameters
 )
 
 @pytest.fixture
@@ -24,22 +25,22 @@ def create_temp_config_file(tmp_path):
 
 
 def test_add_files_entry_valid():
-    entry = AddFilesEntry(type="source", name="example.tar.gz", number=1)
+    entry = AddFilesEntry(global_parameters=GlobalParameters(), type="source", name="example.tar.gz", number=1)
     assert entry.type == "source"
     assert entry.name == "example.tar.gz"
     assert entry.number == 1
 
 def test_add_files_entry_invalid_type():
     with pytest.raises(ValueError, match="Invalid file type"):
-        AddFilesEntry(type="invalid", name="example.tar.gz", number=1)
+        AddFilesEntry(global_parameters=GlobalParameters(), type="invalid", name="example.tar.gz", number=1)
 
 def test_add_files_entry_extra_keys():
     with pytest.raises(ValueError, match="Unexpected keys"):
-        AddFilesEntry(type="source", name="example.tar.gz", number=1, extra_key="extra_value")
+        AddFilesEntry(global_parameters=GlobalParameters(), type="source", name="example.tar.gz", number=1, extra_key="extra_value")
 
 
 def test_replace_entry_valid():
-    entry = ReplaceEntry(target="spec", find="RHEL", replace="MyLinux", count=2)
+    entry = ReplaceEntry(global_parameters=GlobalParameters(), target="spec", find="RHEL", replace="MyLinux", count=2)
     assert entry.target == "spec"
     assert entry.find == "RHEL"
     assert entry.replace == "MyLinux"
@@ -47,49 +48,49 @@ def test_replace_entry_valid():
 
 
 def test_replace_entry_default_count():
-    entry = ReplaceEntry(target="spec", find="RHEL", replace="MyLinux")
+    entry = ReplaceEntry(global_parameters=GlobalParameters(), target="spec", find="RHEL", replace="MyLinux")
     assert entry.count == -1
 
 def test_replace_entry_extra_keys():
     with pytest.raises(ValueError, match="Unexpected keys"):
-        ReplaceEntry(target="spec", find="RHEL", replace="MyLinux", count=1, extra_key="extra_value")
+        ReplaceEntry(global_parameters=GlobalParameters(), target="spec", find="RHEL", replace="MyLinux", count=1, extra_key="extra_value")
 
 def test_replace_empty_target():
     with pytest.raises(ValueError, match="Value for 'target' cannot be empty."):
-        ReplaceEntry(target="", find="RHEL", replace="MyLinux", count=1)
+        ReplaceEntry(global_parameters=GlobalParameters(), target="", find="RHEL", replace="MyLinux", count=1)
 
 def test_delete_line_entry_valid():
-    entry = DeleteLineEntry(target="README.md", lines=["line1", "line2"])
+    entry = DeleteLineEntry(global_parameters=GlobalParameters(), target="README.md", lines=["line1", "line2"])
     assert entry.target == "README.md"
     assert entry.lines == ["line1", "line2"]
 
 def test_delete_line_entry_extra_keys():
     with pytest.raises(ValueError, match="Unexpected keys"):
-        DeleteLineEntry(target="spec", lines=["line1", "line2"], extra_key="extra_value")
+        DeleteLineEntry(global_parameters=GlobalParameters(), target="spec", lines=["line1", "line2"], extra_key="extra_value")
 
 
 def test_changelog_entry_valid():
-    entry = ChangelogEntry(name="AlmaLinux", email="almalinux@example.com", line=["Updated changelog"])
+    entry = ChangelogEntry(global_parameters=GlobalParameters(), name="AlmaLinux", email="almalinux@example.com", line=["Updated changelog"])
     assert entry.name == "AlmaLinux"
     assert entry.email == "almalinux@example.com"
     assert entry.line == ["Updated changelog"]
 
 def test_changelog_entry_extra_keys():
     with pytest.raises(ValueError, match="Unexpected keys"):
-        ChangelogEntry(name="AlmaLinux", email="almalinux@example.com", line=["Updated changelog"], extra_key="extra_value")
+        ChangelogEntry(global_parameters=GlobalParameters(), name="AlmaLinux", email="almalinux@example.com", line=["Updated changelog"], extra_key="extra_value")
 
 def test_changelog_empty_nmae():
     with pytest.raises(ValueError, match="Value for 'email' cannot be empty."):
-        ChangelogEntry(name="AlmaLinux", email="", line=["Updated changelog"])
+        ChangelogEntry(global_parameters=GlobalParameters(), name="AlmaLinux", email="", line=["Updated changelog"])
 
 
 def test_delete_files_entry_valid():
-    entry = DeleteFilesEntry(file_name="unnecessary_file.txt")
+    entry = DeleteFilesEntry(global_parameters=GlobalParameters(), file_name="unnecessary_file.txt")
     assert entry.file_name == "unnecessary_file.txt"
 
 def test_delete_files_entry_extra_keys():
     with pytest.raises(ValueError, match="Unexpected keys: extra_key"):
-        DeleteFilesEntry(file_name="unnecessary_file.txt", extra_key="extra_value")
+        DeleteFilesEntry(global_parameters=GlobalParameters(), file_name="unnecessary_file.txt", extra_key="extra_value")
 
 
 def test_add_files_action():
@@ -97,35 +98,35 @@ def test_add_files_action():
         {"type": "source", "name": "example.tar.gz", "number": 1},
         {"type": "patch", "name": "fix.patch", "number": 2},
     ]
-    action = AddFilesAction(action_data)
+    action = AddFilesAction(action_data, global_parameters={})
     assert len(action.entries) == 2
     assert isinstance(action.entries[0], AddFilesEntry)
     assert action.entries[0].type == "source"
 
 def test_replace_action():
     action_data = [{"target": "spec", "find": "RHEL", "replace": "MyLinux", "count": 1}]
-    action = ReplaceAction(action_data)
+    action = ReplaceAction(action_data, global_parameters={})
     assert len(action.entries) == 1
     assert isinstance(action.entries[0], ReplaceEntry)
     assert action.entries[0].replace == "MyLinux"
 
 def test_delete_line_action():
     action_data = [{"target": "README.md", "lines": ["line1", "line2"]}]
-    action = DeleteLineAction(action_data)
+    action = DeleteLineAction(action_data, global_parameters={})
     assert len(action.entries) == 1
     assert isinstance(action.entries[0], DeleteLineEntry)
     assert "line1" in action.entries[0].lines
 
 def test_changelog_action():
     action_data = [{"name": "AlmaLinux", "email": "almalinux@example.com", "line": ["Updated branding"]}]
-    action = ChangelogAction(action_data)
+    action = ChangelogAction(action_data, global_parameters={})
     assert len(action.entries) == 1
     assert isinstance(action.entries[0], ChangelogEntry)
     assert "Updated branding" in action.entries[0].line
 
 def test_delete_files_action():
     action_data = [{"file_name": "unnecessary_file.txt"}]
-    action = DeleteFilesAction(action_data)
+    action = DeleteFilesAction(action_data, global_parameters={})
     assert len(action.entries) == 1
     assert isinstance(action.entries[0], DeleteFilesEntry)
     assert action.entries[0].file_name == "unnecessary_file.txt"
@@ -152,7 +153,7 @@ def test_delete_files_action():
               - delete_files:
                   - file_name: "old_file.txt"
             """,
-            {"delete_files": [{"file_name": "old_file.txt", "target": "old_file.txt"}]},
+            {"delete_files": [{"file_name": "old_file.txt", "target": "old_file.txt", 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -170,7 +171,7 @@ def test_delete_files_action():
                   - file_name: "old_file2.txt"
                   - file_name: "old_file3.txt"
             """,
-            {"delete_files": [{"file_name": "old_file.txt", "target": "old_file.txt"}, {"file_name": "old_file2.txt", "target": "old_file2.txt"}, {"file_name": "old_file3.txt", "target": "old_file3.txt"}]},
+            {"delete_files": [{"file_name": "old_file.txt", "target": "old_file.txt", 'global_parameters': GlobalParameters()}, {"file_name": "old_file2.txt", "target": "old_file2.txt", 'global_parameters': GlobalParameters()}, {"file_name": "old_file3.txt", "target": "old_file3.txt", 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -197,7 +198,7 @@ def test_delete_files_action():
                 - suffix: ".mycustom.1"
                   enabled: true
             """,
-            {"modify_release": [{"suffix": ".mycustom.1", "enabled": True, "target": "spec"}]},
+            {"modify_release": [{"suffix": ".mycustom.1", "enabled": True, "target": "spec", 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -205,7 +206,7 @@ def test_delete_files_action():
               - modify_release:
                 - suffix: ".mycustom.1"
             """,
-            {"modify_release": [{"suffix": ".mycustom.1", "enabled": True, "target": "spec"}]},
+            {"modify_release": [{"suffix": ".mycustom.1", "enabled": True, "target": "spec", 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -214,7 +215,7 @@ def test_delete_files_action():
                 - suffix: ".almalinux.1"
                   enabled: false
             """,
-            {"modify_release": [{"suffix": ".almalinux.1", "enabled": False, "target": "spec"}]},
+            {"modify_release": [{"suffix": ".almalinux.1", "enabled": False, "target": "spec", 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -252,7 +253,7 @@ def test_delete_files_action():
                     count: -1
             """,
             {"replace": [
-                {"target": "spec", "find": "RHEL", "replace": "MyCustomLinux", "count": -1},
+                {"target": "spec", "find": "RHEL", "replace": "MyCustomLinux", "count": -1, 'global_parameters': GlobalParameters()},
             ]},
             None
         ),
@@ -265,7 +266,7 @@ def test_delete_files_action():
                     count: -1
             """,
             {"replace": [
-                {"target": "spec", "rfind": "RHEL", "replace": "MyCustomLinux", "count": -1},
+                {"target": "spec", "rfind": "RHEL", "replace": "MyCustomLinux", "count": -1, 'global_parameters': GlobalParameters()},
             ]},
             None
         ),
@@ -321,8 +322,8 @@ def test_delete_files_action():
                     replace: "MyCustomLinux"
             """,
             {"replace": [
-                {"target": "spec", "find": "RHEL", "replace": "MyCustomLinux", "count": 1},
-                {"target": "README.md", "find": "RHEL", "replace": "MyCustomLinux", "count": -1},
+                {"target": "spec", "find": "RHEL", "replace": "MyCustomLinux", "count": 1, 'global_parameters': GlobalParameters()},
+                {"target": "README.md", "find": "RHEL", "replace": "MyCustomLinux", "count": -1, 'global_parameters': GlobalParameters()},
             ]},
             None 
         ),
@@ -408,7 +409,7 @@ def test_delete_files_action():
                   - target: "README.md"
                     lines: ["line1", "line2"]
                 """,
-                {"delete_line": [{"target": "README.md", "lines": ["line1", "line2"]}]},
+                {"delete_line": [{"target": "README.md", "lines": ["line1", "line2"], 'global_parameters': GlobalParameters()}]},
                 None
         ),
         ("""
@@ -419,7 +420,7 @@ def test_delete_files_action():
                       - line1
                       - line2
                 """,
-                {"delete_line": [{"target": "README.md", "lines": ["line1", "line2"]}]},
+                {"delete_line": [{"target": "README.md", "lines": ["line1", "line2"], 'global_parameters': GlobalParameters()}]},
                 None
         ),
         ("""
@@ -467,7 +468,7 @@ def test_delete_files_action():
                         continuation of line
                       - another line
             """,
-            {"delete_line": [{"target": "README.md", "lines": ["line1\ncontinuation of line\n", "another line"]}]},
+            {"delete_line": [{"target": "README.md", "lines": ["line1\ncontinuation of line\n", "another line"], 'global_parameters': GlobalParameters()}]},
             None
         ),
 
@@ -479,7 +480,7 @@ def test_delete_files_action():
                     line: 
                         - "Added a new feature"
             """,
-            {"changelog_entry": [{"name": "AlmaLinux", "email": "john@example.com", "line": ["Added a new feature"], "target": "spec"}]},
+            {"changelog_entry": [{"name": "AlmaLinux", "email": "john@example.com", "line": ["Added a new feature"], "target": "spec", 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -491,7 +492,7 @@ def test_delete_files_action():
                         - "Added a new feature"
                         - "Fixed a bug"
             """,
-            {"changelog_entry": [{"name": "AlmaLinux", "email": "john@example.com", "line": ["Added a new feature", "Fixed a bug"], "target": "spec"}]},
+            {"changelog_entry": [{"name": "AlmaLinux", "email": "john@example.com", "line": ["Added a new feature", "Fixed a bug"], "target": "spec", 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -506,7 +507,10 @@ def test_delete_files_action():
                     line: 
                         - "Fixed a bug"
             """,
-            {"changelog_entry": [{"name": "AlmaLinux", "email": "john@example.com", "line": ["Added a new feature"], "target": "spec"}, {"name": "AlmaLinux", "email": "john@example.com", "line": ["Fixed a bug"], "target": "spec"}]},
+            {"changelog_entry": [
+                {"name": "AlmaLinux", "email": "john@example.com", "line": ["Added a new feature"], "target": "spec", 'global_parameters': GlobalParameters()},
+                {"name": "AlmaLinux", "email": "john@example.com", "line": ["Fixed a bug"], "target": "spec", 'global_parameters': GlobalParameters()}
+                ]},
             None
         ),
         ("""
@@ -564,7 +568,7 @@ def test_delete_files_action():
                     name: "file.tar.gz"
                     number: 1
             """,
-            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": 1, "target": "spec", "modify_spec": True, "insert_almalinux_line": True, "no_backup": False}]},
+            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": 1, "target": "spec", "modify_spec": True, "insert_almalinux_line": True, "no_backup": False, 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -577,7 +581,7 @@ def test_delete_files_action():
                     insert_almalinux_line: False
                     no_backup: True
             """,
-            {"add_files": [{"type": "patch", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": False, "insert_almalinux_line": False, "no_backup": True}]},
+            {"add_files": [{"type": "patch", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": False, "insert_almalinux_line": False, "no_backup": True, 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -614,7 +618,7 @@ def test_delete_files_action():
                   - type: "source"
                     name: "file.tar.gz"
             """,
-            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True, "insert_almalinux_line": True, "no_backup": False}]},
+            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True, "insert_almalinux_line": True, "no_backup": False, 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -624,7 +628,7 @@ def test_delete_files_action():
                     name: "file.tar.gz"
                     insert_almalinux_line: True
             """,
-            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True, "insert_almalinux_line": True, "no_backup": False}]},
+            {"add_files": [{"type": "source", "name": "file.tar.gz", "number": "Latest", "target": "spec", "modify_spec": True, "insert_almalinux_line": True, "no_backup": False, 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -674,7 +678,7 @@ def test_delete_files_action():
               - run_script:
                   - script: "source"
             """,
-            {"run_script": [{"target": "", "script": "source", "cwd": "rpms"}]},
+            {"run_script": [{"target": "", "script": "source", "cwd": "rpms", 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -709,7 +713,7 @@ def test_delete_files_action():
                     content: "echo Hello World"
             """,
             {"add_line": [
-                {"target": "spec", "section": "install", "location": "top", "content": "echo Hello World"},
+                {"target": "spec", "section": "install", "location": "top", "content": "echo Hello World", 'global_parameters': GlobalParameters()},
             ]},
             None
         ),
@@ -723,7 +727,7 @@ def test_delete_files_action():
                     subpackage: "subpackage"
             """,
             {"add_line": [
-                {"target": "spec", "section": "install", "location": "top", "content": "echo Hello World", "subpackage": "subpackage"},
+                {"target": "spec", "section": "install", "location": "top", "content": "echo Hello World", "subpackage": "subpackage", 'global_parameters': GlobalParameters()},
             ]},
             None
         ),

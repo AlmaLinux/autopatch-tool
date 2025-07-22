@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import yaml
 from pathlib import Path
 import datetime
@@ -8,6 +10,16 @@ import re
 from tools.logger import logger
 from tools.tools import run_command
 import tools.rpm
+
+
+@dataclass
+class GlobalParameters:
+    """
+    Class to hold global parameters for the autopatch tool.
+    This class can be extended to include more global parameters as needed.
+    """
+    insert_almalinux_line: bool = True
+
 
 class ActionNotAppliedError(Exception):
     """
@@ -125,9 +137,10 @@ class BaseEntry:
     ALLOWED_KEYS = {}
     REQUIRED_KEYS = set()
 
-    def __init__(self, **kwargs):
+    def __init__(self, global_parameters: GlobalParameters, **kwargs):
         self._validate_keys(kwargs)
         self._initialize_attributes(kwargs)
+        self.global_parameters = global_parameters
 
     def _validate_keys(self, kwargs):
         missing_keys = self.REQUIRED_KEYS - set(kwargs.keys())
@@ -201,7 +214,11 @@ class BaseEntry:
 class BaseAction:
     ENTRY_CLASS = None
 
-    def __init__(self, data, config_source: Path = None):
+    def __init__(self, data, config_source: Path = None, global_parameters: dict = {}):
+        self.global_parameters = GlobalParameters(
+            insert_almalinux_line=global_parameters.get("insert_almalinux_line", True)
+        )
+
         self.entries = self._create_entries(data)
         self.config_source = config_source
 
@@ -211,7 +228,7 @@ class BaseAction:
             if not isinstance(entry_data, dict):
                 raise ValueError(f"Invalid format: expected a dictionary, got {type(entry_data).__name__}")
             logger.debug(f"Processing entry data: {entry_data}")
-            entry = self.ENTRY_CLASS(**entry_data)
+            entry = self.ENTRY_CLASS(self.global_parameters, **entry_data)
             entries.append(entry)
         return entries
 
@@ -226,8 +243,8 @@ class DeleteFilesEntry(BaseEntry):
     }
     REQUIRED_KEYS = {"file_name"}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, global_parameters: GlobalParameters, **kwargs):
+        super().__init__(global_parameters, **kwargs)
         self.target = self.file_name
 
 class DeleteFilesAction(BaseAction):
@@ -246,11 +263,13 @@ class DeleteFilesAction(BaseAction):
         metadata = read_file_data(metadata_file)
 
         for i, line in enumerate(metadata):
-            # example of line: SHA512 (fwupd-1.9.26.tar.xz) = 04684f0be26c1daec9966e62c7db103cce923bb361657c66111e085e9a388e812250ac18774ef83eac672852489acc2ab21b9d7c94a28a8e5564e8bb7d67c0ba
+            # example of line:
+            # SHA512 (fwupd-1.9.26.tar.xz) = 04684f0be26c1daec9966e62c7db103cce923bb361657c66111e085e9a388e812250ac18774ef83eac672852489acc2ab21b9d7c94a28a8e5564e8bb7d67c0ba
             if re.match(rf"SHA512 \({file_name}\)", line):
                 del metadata[i]
                 break
-            # example if line: b2620c36bd23ca699567fd4e4add039ee4375247 SOURCES/DBXUpdate-20100307-x64.cab
+            # example if line:
+            # b2620c36bd23ca699567fd4e4add039ee4375247 SOURCES/DBXUpdate-20100307-x64.cab
             elif re.match(rf"[0-9a-f]{{40}} {file_name}", line):
                 del metadata[i]
                 break
@@ -284,16 +303,17 @@ class ReplaceEntry(BaseEntry):
     }
     REQUIRED_KEYS = {"target", "replace"}
 
-    def __init__(self, **kwargs):
+    def __init__(self, global_parameters: GlobalParameters, **kwargs):
         if "find" not in kwargs and "rfind" not in kwargs:
             raise ValueError("Either 'find' or 'rfind' parameter must be provided")
         if "find" in kwargs and "rfind" in kwargs:
             raise ValueError("Only one of 'find' or 'rfind' can be provided, not both")
-        # Check if both find and rfind are empty, that the same as REQUIRED_KEYS, but can't be checked in _validate_keys
+        # Check if both find and rfind are empty
+        # that the same as REQUIRED_KEYS, but can't be checked in _validate_keys
         # because they are mutually exclusive
         if not kwargs.get("find") and not kwargs.get("rfind"):
             raise ValueError("Value for 'find' or 'rfind' cannot be empty.")
-        super().__init__(**kwargs)
+        super().__init__(global_parameters, **kwargs)
         self.count = kwargs.get("count", -1)
 
 class ReplaceAction(BaseAction):
@@ -311,7 +331,14 @@ class ReplaceAction(BaseAction):
 
             for file_path in file_paths:
                 logger.info(f"Applying: {entry} to {file_path}")
-                process_lines(file_path, entry.target, find_lines, replace_lines, entry.count, is_regex)
+                process_lines(
+                    file_path,
+                    entry.target,
+                    find_lines,
+                    replace_lines,
+                    entry.count,
+                    is_regex
+                )
 
 
 class ModifyReleaseEntry(BaseEntry):
@@ -321,8 +348,8 @@ class ModifyReleaseEntry(BaseEntry):
     }
     REQUIRED_KEYS = {"suffix"}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, global_parameters: GlobalParameters, **kwargs):
+        super().__init__(global_parameters, **kwargs)
         self.enabled = kwargs.get("enabled", True)
         self.target = "spec"
 
@@ -376,8 +403,8 @@ class RunScriptEntry(BaseEntry):
     }
     REQUIRED_KEYS = {"script"}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, global_parameters: GlobalParameters, **kwargs):
+        super().__init__(global_parameters, **kwargs)
         self.cwd = kwargs.get("cwd", "rpms")
         self.target = ""
         self.verify_cwd()
@@ -412,8 +439,8 @@ class ChangelogEntry(BaseEntry):
     }
     REQUIRED_KEYS = {"name", "email", "line"}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, global_parameters: GlobalParameters, **kwargs):
+        super().__init__(global_parameters, **kwargs)
         if not self.line or not any(self.line):
             raise ValueError("Line cannot be an empty list")
         self.target = "spec"
@@ -470,14 +497,14 @@ class AddFilesEntry(BaseEntry):
     VALID_FILE_TYPES = {"patch", "source"}
     # VALID_FILE_TYPES = {"patch"}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, global_parameters: GlobalParameters, **kwargs):
+        super().__init__(global_parameters, **kwargs)
         self.modify_spec = kwargs.get("modify_spec", True)
         self.number = kwargs.get("number", "Latest")
         self._validate_file_type()
         self._validate_number()
         self.target = "spec"
-        self.insert_almalinux_line = kwargs.get("insert_almalinux_line", True)
+        self.insert_almalinux_line = kwargs.get("insert_almalinux_line", global_parameters.insert_almalinux_line)
         self.no_backup = kwargs.get("no_backup", False)
 
     def _validate_file_type(self):
@@ -571,8 +598,8 @@ class AddLineEntry(BaseEntry):
     }
     REQUIRED_KEYS = {"target", "section", "location", "content"}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, global_parameters: GlobalParameters, **kwargs):
+        super().__init__(global_parameters, **kwargs)
         self._validate_target()
         self._validate_location()
 
@@ -609,11 +636,11 @@ class AddLineAction(BaseAction):
 
 class ConfigReader:
     ACTION_MAP = {
-        "replace": ReplaceAction, # Done
-        "delete_line": DeleteLineAction, # Done
-        "changelog_entry": ChangelogAction, # Done
-        "modify_release": ModifyReleaseAction, # Done
-        "delete_files": DeleteFilesAction, # Done
+        "replace": ReplaceAction,
+        "delete_line": DeleteLineAction,
+        "changelog_entry": ChangelogAction,
+        "modify_release": ModifyReleaseAction,
+        "delete_files": DeleteFilesAction,
         "add_files": AddFilesAction,
         "run_script": RunScriptAction,
         "add_line": AddLineAction,
@@ -660,10 +687,15 @@ class ConfigReader:
         self._validate_config(config_data)
 
         actions_data = config_data.get("actions")
+        global_parameters = config_data.get("parameters", {})
         for action_data in actions_data:
             for action_type, action_entries in action_data.items():
                 action_class = self.ACTION_MAP[action_type]
-                action_instance = action_class(action_entries, config_source=self.config_source)
+                action_instance = action_class(
+                    action_entries,
+                    config_source=self.config_source,
+                    global_parameters=global_parameters
+                )
                 self.actions.append(action_instance)
 
     def apply_actions(self, package_path: Path):
