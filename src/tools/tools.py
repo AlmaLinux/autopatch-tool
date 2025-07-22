@@ -11,7 +11,14 @@ def run_command(command, raise_on_failure=True, without_log=False, shell=False, 
         command_str = command if shell else ' '.join(command)
         if not without_log:
             logger.debug(f"Running command: {command_str}")
-        result = subprocess.run(command, capture_output=True, text=True, shell=shell, cwd=cwd)
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            shell=shell,
+            cwd=cwd,
+            check=False
+        )
         if result.returncode != 0:
             error_message = f"Command failed: {command_str}\n{result.stderr.strip()}"
             if not without_log:
@@ -28,7 +35,9 @@ def load_cas_credentials(path: str = '~/.cas/credentials') -> Dict[str, str]:
         with open(Path(path).expanduser()) as f:
             content = safe_load(f)
             if not content:
-                raise ValueError(f"Credentials file at {path} is empty or contains invalid content.")
+                raise ValueError(
+                    f"Credentials file at {path} is empty or contains invalid content."
+                )
             return {
                 'username': content['immudb_username'],
                 'password': content['immudb_password'],

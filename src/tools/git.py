@@ -1,7 +1,7 @@
-from pathlib import Path
 import shutil
 import os
 import requests
+from pathlib import Path
 
 
 from tools.logger import logger
@@ -42,6 +42,7 @@ class GitRepositoryError(Exception):
         super().__init__(message)
 
 class GitRepository:
+    # pylint: disable=missing-function-docstring
     """
     Class for working with git repositories
     """
@@ -112,12 +113,18 @@ class GitRepository:
             if result.returncode != 0:
                 logger.info(f"Branch {branch} does not exist, creating it.")
                 run_command(["git", "checkout", "--orphan", branch])
-    
+
     def replace_file(self, replacing_branch: str, file: str):
+        """
+        Replace a file with the contents of another branch.
+        """
         logger.info(f"Replacing file {file} with {replacing_branch}")
         self.run_in_repo("git", "checkout", replacing_branch, "--", file)
 
     def get_sbom_hash(self) -> str:
+        """
+        Get the SBOM hash of the current commit.
+        """
         if not ALLOW_NOTARIZATION:
             return ""
         try:
@@ -126,7 +133,7 @@ class GitRepository:
 
             if not matching_tag_is_authenticated:
                 logger.error(f"Upstream commit is not notarized")
-                raise GitRepositoryError(f"Upstream commit is not notarized")
+                raise GitRepositoryError("Upstream commit is not notarized")
             matching_immudb_hash = result.get('value', {}).get('Hash')
 
             logger.info(f"Upstream commit is notarized with hash: {matching_immudb_hash}")
@@ -150,7 +157,7 @@ class GitRepository:
         logger.info(f"Commit notarization hash: {hash}")
 
         return hash
-    
+
     def merge_branch(self, branch: str, strategy: str = None, no_commit: bool = False):
         command = ["git", "merge", branch]
 
@@ -193,23 +200,26 @@ class GitRepository:
         self.replace_file(base_branch, '.')
 
         if not no_commit:
-            self.commit([f"Merge '{base_branch}' into '{target_branch}'"], "AlmaLinux Autopatch", "")
+            self.commit(
+                [f"Merge '{base_branch}' into '{target_branch}'"],
+                "AlmaLinux Autopatch",
+                ""
+            )
 
     def get_latest_tag(self):
         with DirectoryManager(self.name):
             return run_command(["git", "describe", "--tags", "--abbrev=0"]).stdout.strip()
 
 
-
 class GitAlmaLinux:
     """
     Class for working with AlmaLinux git autopatch namespace
     """
-    _almalinux_git = 'git.almalinux.org'
-    _almalinux_git_url = f'https://{_almalinux_git}'
-    _almalinux_git_api = f'https://{_almalinux_git}/api/v1'  # https://git.almalinux.org/api/v1
-    _autopatch_namespace = 'autopatch'
-    _rpms_namespace = 'rpms'
+    ALMALINUX_GIT = 'git.almalinux.org'
+    ALMALINUX_GIT_URL = f'https://{ALMALINUX_GIT}'
+    ALMALINUX_GIT_API = f'https://{ALMALINUX_GIT}/api/v1'  # https://git.almalinux.org/api/v1
+    AUTOPATCH_NAMESPACE = 'autopatch'
+    RPMS_NAMESPACE = 'rpms'
 
     @staticmethod
     def _iterate_over_pages(url):
@@ -223,7 +233,9 @@ class GitAlmaLinux:
 
                 if response.status_code != 200:
                     logger.error(f"Failed to get data from {full_url} with status code {response.status_code}:\n{response.text}")
-                    raise requests.HTTPError(f"Failed to get data from {full_url}: {response.status_code}")
+                    raise requests.HTTPError(
+                        f"Failed to get data from {full_url}: {response.status_code}"
+                    )
 
                 data = response.json()
                 if not data:
@@ -236,14 +248,21 @@ class GitAlmaLinux:
 
     @staticmethod
     def get_list_of_modified_packages():
-        url = f"{GitAlmaLinux._almalinux_git_api}/orgs/{GitAlmaLinux._autopatch_namespace}/repos"
+        """
+        Get the list of modified packages.
+        """
+        url = f"{GitAlmaLinux.ALMALINUX_GIT_API}/orgs/{GitAlmaLinux.AUTOPATCH_NAMESPACE}/repos"
         repos = GitAlmaLinux._iterate_over_pages(url)
 
         return [repo['name'] for repo in repos if not repo['archived']]
 
     @staticmethod
     def get_branches_from_package(package_name):
-        url = f"{GitAlmaLinux._almalinux_git_api}/repos/{GitAlmaLinux._autopatch_namespace}/{package_name}/branches"
+        """
+        Get the list of branches from a package.
+        """
+        url = (f"{GitAlmaLinux.ALMALINUX_GIT_API}/repos/"
+               f"{GitAlmaLinux.AUTOPATCH_NAMESPACE}/{package_name}/branches")
         branches = GitAlmaLinux._iterate_over_pages(url)
 
         return [branch['name'] for branch in branches]

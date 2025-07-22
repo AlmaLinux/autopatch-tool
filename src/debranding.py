@@ -1,8 +1,12 @@
 import os
 
-from tools.logger import logger
 from actions_handler import ConfigReader
-from tools.git import GitRepository, GitAlmaLinux, DirectoryManager
+from tools.logger import logger
+from tools.git import (
+    GitRepository,
+    GitAlmaLinux,
+    DirectoryManager,
+)
 
 BRANCH_NOT_MODIFIED = "Branch is not modified"
 PACKAGE_NOT_MODIFIED = "Package is not modified"
@@ -37,17 +41,26 @@ def apply_modifications(
         return BRANCH_NOT_MODIFIED
 
     with DirectoryManager(autopatch_working_dir):
-        config_repo = GitRepository(f"git@{GitAlmaLinux._almalinux_git}:{GitAlmaLinux._autopatch_namespace}/{package}.git")
+        config_repo = GitRepository(
+            f"git@{GitAlmaLinux.ALMALINUX_GIT}:{GitAlmaLinux.AUTOPATCH_NAMESPACE}/{package}.git"
+        )
         config_repo.checkout_branch(config_branch)
         config_repo.pull()
 
     config = ConfigReader(autopatch_working_dir + f"/{package}/config.yaml")
 
     with DirectoryManager(rpms_working_dir):
-        git_repo = GitRepository(f"git@{GitAlmaLinux._almalinux_git}:{GitAlmaLinux._rpms_namespace}/{package}.git")
+        git_repo = GitRepository(
+            f"git@{GitAlmaLinux.ALMALINUX_GIT}:{GitAlmaLinux.RPMS_NAMESPACE}/{package}.git"
+        )
         git_repo.checkout_branch(branch)
         if not set_custom_tag:
-            tag = git_repo.get_latest_tag().replace(f"imports/{branch}", f"changed/{al_branch}", 1) + config.get_release_suffix()
+            base_tag = git_repo.get_latest_tag().replace(
+                f"imports/{branch}",
+                f"changed/{al_branch}",
+                1
+            )
+            tag = base_tag + config.get_release_suffix()
         else:
             tag = set_custom_tag
         git_repo.pull()
