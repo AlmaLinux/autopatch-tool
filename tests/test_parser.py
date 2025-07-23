@@ -1,3 +1,4 @@
+from ast import Global
 import re
 import pytest
 from actions_handler import (
@@ -98,39 +99,38 @@ def test_add_files_action():
         {"type": "source", "name": "example.tar.gz", "number": 1},
         {"type": "patch", "name": "fix.patch", "number": 2},
     ]
-    action = AddFilesAction(action_data, global_parameters={})
+    action = AddFilesAction(action_data, global_parameters=GlobalParameters())
     assert len(action.entries) == 2
     assert isinstance(action.entries[0], AddFilesEntry)
     assert action.entries[0].type == "source"
 
 def test_replace_action():
     action_data = [{"target": "spec", "find": "RHEL", "replace": "MyLinux", "count": 1}]
-    action = ReplaceAction(action_data, global_parameters={})
+    action = ReplaceAction(action_data, global_parameters=GlobalParameters())
     assert len(action.entries) == 1
     assert isinstance(action.entries[0], ReplaceEntry)
     assert action.entries[0].replace == "MyLinux"
 
 def test_delete_line_action():
     action_data = [{"target": "README.md", "lines": ["line1", "line2"]}]
-    action = DeleteLineAction(action_data, global_parameters={})
+    action = DeleteLineAction(action_data, global_parameters=GlobalParameters())
     assert len(action.entries) == 1
     assert isinstance(action.entries[0], DeleteLineEntry)
     assert "line1" in action.entries[0].lines
 
 def test_changelog_action():
     action_data = [{"name": "AlmaLinux", "email": "almalinux@example.com", "line": ["Updated branding"]}]
-    action = ChangelogAction(action_data, global_parameters={})
+    action = ChangelogAction(action_data, global_parameters=GlobalParameters())
     assert len(action.entries) == 1
     assert isinstance(action.entries[0], ChangelogEntry)
     assert "Updated branding" in action.entries[0].line
 
 def test_delete_files_action():
     action_data = [{"file_name": "unnecessary_file.txt"}]
-    action = DeleteFilesAction(action_data, global_parameters={})
+    action = DeleteFilesAction(action_data, global_parameters=GlobalParameters())
     assert len(action.entries) == 1
     assert isinstance(action.entries[0], DeleteFilesEntry)
     assert action.entries[0].file_name == "unnecessary_file.txt"
-
 
 @pytest.mark.parametrize(
     "config_string, expected_actions, expected_error_message",

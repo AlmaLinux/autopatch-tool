@@ -10,3 +10,4 @@ tests/results/
 main_git.py
 *namespace
 ansible/inventory/hosts.yml
+diff.diff

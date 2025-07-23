@@ -13,6 +13,14 @@ PACKAGE_NOT_MODIFIED = "Package is not modified"
 SUCCESS = "Debranding applied"
 
 
+def get_config_files(autopatch_path: str, package: str) -> list[str]:
+    config_files = []
+    for file in os.listdir(autopatch_path + f"/{package}"):
+        if file.endswith(".yaml") and file.startswith("config"):
+            config_files.append(file)
+    return config_files
+
+
 def apply_modifications(
     package,
     branch,
@@ -47,34 +55,54 @@ def apply_modifications(
         config_repo.checkout_branch(config_branch)
         config_repo.pull()
 
-    config = ConfigReader(autopatch_working_dir + f"/{package}/config.yaml")
+    config_files = get_config_files(autopatch_working_dir, package)
+    for config_file in config_files:
+        logger.info(f"Processing config file {config_file}")
+        _al_branch = al_branch
 
-    with DirectoryManager(rpms_working_dir):
-        git_repo = GitRepository(
-            f"git@{GitAlmaLinux.ALMALINUX_GIT}:{GitAlmaLinux.RPMS_NAMESPACE}/{package}.git"
-        )
-        git_repo.checkout_branch(branch)
-        if not set_custom_tag:
-            base_tag = git_repo.get_latest_tag().replace(
-                f"imports/{branch}",
-                f"changed/{al_branch}",
-                1
+        config = ConfigReader(f"{autopatch_working_dir}/{package}/{config_file}")
+        if config.global_parameters.custom_target_branch:
+            _al_branch = config.global_parameters.custom_target_branch
+
+        if config_file != "config.yaml" and _al_branch == al_branch:
+            message = (
+                f"Additional config {config_file} exists,"
+                "but custom_target_branch is not specified in the config file's global parameters"
             )
-            tag = base_tag + config.get_release_suffix()
-        else:
-            tag = set_custom_tag
-        git_repo.pull()
-        upstream_hash = git_repo.get_sbom_hash()
+            logger.warning(message)
+            raise RuntimeError(message)
 
-        git_repo.reset_to_base_branch(branch, al_branch, no_commit=True)
-        config.apply_actions(rpms_working_dir + f"/{package}")
+        with DirectoryManager(rpms_working_dir):
+            git_repo = GitRepository(
+                f"git@{GitAlmaLinux.ALMALINUX_GIT}:{GitAlmaLinux.RPMS_NAMESPACE}/{package}.git"
+            )
+            git_repo.checkout_branch(branch)
+            if not set_custom_tag:
+                base_tag = git_repo.get_latest_tag().replace(
+                    f"imports/{branch}",
+                    f"changed/{_al_branch}",
+                    1
+                )
+                tag = base_tag + config.get_release_suffix()
+            else:
+                tag = set_custom_tag
+            git_repo.pull()
+            upstream_hash = git_repo.get_sbom_hash()
 
-        changelog_entries, name, email = config.get_changelog()
+            git_repo.reset_to_base_branch(
+                branch,
+                _al_branch,
+                no_commit=True,
+                pre_clean=config.global_parameters.pre_clean
+            )
+            config.apply_actions(rpms_working_dir + f"/{package}")
 
-        git_repo.commit(changelog_entries, name, email)
-        if not no_tag:
-            git_repo.create_tag(tag)
-        git_repo.push(al_branch)
-        git_repo.notarize_commit(upstream_hash)
+            changelog_entries, name, email = config.get_changelog()
+
+            git_repo.commit(changelog_entries, name, email)
+            if not no_tag:
+                git_repo.create_tag(tag)
+            git_repo.push(_al_branch)
+            git_repo.notarize_commit(upstream_hash)
 
     return SUCCESS
