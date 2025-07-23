@@ -159,7 +159,7 @@ class GitRepository:
         return hash
 
     def merge_branch(self, branch: str, strategy: str = None, no_commit: bool = False):
-        command = ["git", "merge", branch]
+        command = ["git", "merge", branch, "--no-edit"]
 
         if 'ours' not in strategy and 'theirs' not in strategy:
             logger.error(f"Invalid strategy: {strategy}")
@@ -190,11 +190,23 @@ class GitRepository:
             else:
                 logger.error(f"Directory is empty: {self.name}")
 
-    def reset_to_base_branch(self, base_branch: str, target_branch: str, no_commit: bool = False):
+    def reset_to_base_branch(self, base_branch: str, target_branch: str, no_commit: bool = False, pre_clean: bool = False):
         self.checkout_branch(base_branch)
         self.checkout_branch(target_branch)
 
-        self.merge_branch(base_branch, strategy='theirs', no_commit=True)
+        if pre_clean:
+            logger.info(f"Pre-cleaning target branch {target_branch} before merging {base_branch}")
+            self.clean_repodir()
+            self.replace_file(base_branch, '.')
+
+        try:
+            self.merge_branch(base_branch, strategy='theirs', no_commit=True)
+        except RuntimeError as e:
+            if pre_clean: # in case of pre-clean, we just ignore the error
+                logger.info(f"Failed to merge branch {base_branch} into {target_branch} with pre-clean: {e}")
+            else:
+                logger.error(f"Failed to merge branch {base_branch} into {target_branch}: {e}")
+                raise e
         # All files in the target branch should be replaced with the files in the base branch
         self.clean_repodir()
         self.replace_file(base_branch, '.')

@@ -15,12 +15,19 @@ import tools.rpm
 
 @dataclass
 class GlobalParameters:
+    # pylint: disable=dangerous-default-value
     """
     Class to hold global parameters for the autopatch tool.
     This class can be extended to include more global parameters as needed.
     """
-    insert_almalinux_line: bool = True
+    insert_almalinux_line: bool
+    custom_target_branch: str
+    pre_clean: bool
 
+    def __init__(self, parameters: dict = {}):
+        self.insert_almalinux_line = parameters.get("insert_almalinux_line", True)
+        self.custom_target_branch = parameters.get("custom_target_branch", "")
+        self.pre_clean = parameters.get("pre_clean", False)
 
 class ActionNotAppliedError(Exception):
     """
@@ -162,7 +169,10 @@ class BaseEntry:
         extra_keys = set(kwargs.keys()) - set(self.ALLOWED_KEYS.keys())
 
         if extra_keys:
-            raise ValueError(f"Unexpected keys: {', '.join(extra_keys)}. Allowed keys: {', '.join(self.ALLOWED_KEYS.keys())}")
+            raise ValueError(
+                (f"Unexpected keys: {', '.join(extra_keys)}. "
+                 f"Allowed keys: {', '.join(self.ALLOWED_KEYS.keys())}")
+            )
 
         if missing_keys:
             raise ValueError(f"Missing required keys: {', '.join(missing_keys)}")
@@ -181,7 +191,8 @@ class BaseEntry:
                         else expected_type.__name__
                     )
                     raise TypeError(
-                        f"Invalid type for '{key}': expected {expected_type_names}, got {type(actual_value).__name__}"
+                        (f"Invalid type for '{key}': expected {expected_type_names}, "
+                         f"got {type(actual_value).__name__}")
                     )
         for key in self.REQUIRED_KEYS:
             actual_value = kwargs.get(key)
@@ -237,13 +248,8 @@ class BaseAction:
     """
     ENTRY_CLASS = None
 
-    def __init__(self, data, config_source: Path = None, global_parameters: dict = None):
-        if not global_parameters:
-            global_parameters = {}
-        self.global_parameters = GlobalParameters(
-            insert_almalinux_line=global_parameters.get("insert_almalinux_line", True)
-        )
-
+    def __init__(self, data, config_source: Path = None, global_parameters: GlobalParameters = None):
+        self.global_parameters = global_parameters
         self.entries = self._create_entries(data)
         self.config_source = config_source
 
@@ -298,12 +304,12 @@ class DeleteFilesAction(BaseAction):
 
         for i, line in enumerate(metadata):
             # example of line:
-            # SHA512 (fwupd-1.9.26.tar.xz) = 04684f0be26c1daec9966e62c7db103cce923bb361657c66111e085e9a388e812250ac18774ef83eac672852489acc2ab21b9d7c94a28a8e5564e8bb7d67c0ba
+            # SHA512 (fwupd-1.9.26.tar.xz) = HASH
             if re.match(rf"SHA512 \({file_name}\)", line):
                 del metadata[i]
                 break
             # example if line:
-            # b2620c36bd23ca699567fd4e4add039ee4375247 SOURCES/DBXUpdate-20100307-x64.cab
+            # HASH SOURCES/DBXUpdate-20100307-x64.cab
             if re.match(rf"[0-9a-f]{{40}} {file_name}", line):
                 del metadata[i]
                 break
@@ -670,6 +676,9 @@ class DeleteLineEntry(BaseEntry):
     REQUIRED_KEYS = {"target", "lines"}
 
 class DeleteLineAction(BaseAction):
+    """
+    Action class for the DeleteLineAction.
+    """
     ENTRY_CLASS = DeleteLineEntry
 
     def execute(self, package_path: Path):
@@ -711,6 +720,9 @@ class AddLineEntry(BaseEntry):
             raise ValueError(f"Invalid location '{self.location}'. Must be 'top' or 'bottom'.")
 
 class AddLineAction(BaseAction):
+    """
+    Action class for the AddLineAction.
+    """
     ENTRY_CLASS = AddLineEntry
 
     def execute(self, package_path: Path):
@@ -734,6 +746,9 @@ class AddLineAction(BaseAction):
                 raise ActionNotAppliedError("AddLineAction", str(e))
 
 class ConfigReader:
+    """
+    Class for reading and applying actions from a config file.
+    """
     ACTION_MAP = {
         "replace": ReplaceAction,
         "delete_line": DeleteLineAction,
@@ -751,6 +766,7 @@ class ConfigReader:
         else:
             self.config_source = config_source
         self.actions = []
+        self.global_parameters = GlobalParameters()
         self._read_config()
 
     def _load_config(self):
@@ -786,14 +802,14 @@ class ConfigReader:
         self._validate_config(config_data)
 
         actions_data = config_data.get("actions")
-        global_parameters = config_data.get("parameters", {})
+        self.global_parameters = GlobalParameters(config_data.get("parameters", {}))
         for action_data in actions_data:
             for action_type, action_entries in action_data.items():
                 action_class = self.ACTION_MAP[action_type]
                 action_instance = action_class(
                     action_entries,
                     config_source=self.config_source,
-                    global_parameters=global_parameters
+                    global_parameters=self.global_parameters
                 )
                 self.actions.append(action_instance)
 
