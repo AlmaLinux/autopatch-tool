@@ -1,6 +1,3 @@
-# %{name} is a metapackage that will install all subpackages
-# %{name}-core provides the base functionality
-# other feature sets are split out to separate sub packages
 Name:           autopatch
 Version:        1.0.0
 Release:        1%{?dist}
@@ -12,9 +9,12 @@ BuildArch:      noarch
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools
 Requires:       %{name}-core = %{version}-%{release}
-Requires:       %{name}-git = %{version}-%{release}
-Requires:       %{name}-slack = %{version}-%{release}
-Requires:       %{name}-web = %{version}-%{release}
+Requires:       git
+Requires:       python3-flask
+Requires:       python3-immudb_wrapper
+Requires:       python3-requests
+Requires:       python3-slackclient
+Requires:       python3-werkzeug
 
 %description
 A tool to automatically patch upstream content for use downstream
@@ -28,8 +28,23 @@ A tool to automatically patch upstream content for use downstream
 %install
 %py3_install
 
-# Empty file list for the %{name} metapackage, but we still need to define it
 %files
+# git
+%{python3_sitelib}/%{name}/tools/git.py
+%{python3_sitelib}/%{name}/tools/__pycache__/git.cpython*.pyc
+%{python3_sitelib}/%{name}/debranding.py
+%{python3_sitelib}/%{name}/__pycache__/debranding.cpython*.pyc
+%{python3_sitelib}/package_patching.py
+%{python3_sitelib}/__pycache__/package_patching.cpython*
+%{_bindir}/autopatch_package_patching
+# slack
+%{python3_sitelib}/%{name}/tools/slack.py
+%{python3_sitelib}/%{name}/tools/__pycache__/slack.cpython*.pyc
+# web
+%{python3_sitelib}/%{name}/webserv.py
+%{python3_sitelib}/%{name}/tools/webserv_tools.py
+%{python3_sitelib}/%{name}/tools/__pycache__/webserv_tools.cpython*.pyc
+%{python3_sitelib}/%{name}/__pycache__/webserv.cpython*.pyc
 
 %package core
 Summary:        Core components of the autopatch tool
@@ -62,62 +77,8 @@ Core components of the autopatch tool
 %{_bindir}/autopatch
 %{_bindir}/autopatch_validate_config
 
-
-%package git
-Summary:        Git module for the autopatch tool
-Requires:       %{name}-core = %{version}-%{release}
-Requires:       python3
-Requires:       python3-requests
-Requires:       git
-# python3-immudb-wrapper needs to be packaged (as well as the upstream python3-immudb)
-Requires:       python3-immudb-wrapper
-
-%description git
-Git support for the autopatch tool
-
-%files git
-%{python3_sitelib}/%{name}/tools/git.py
-%{python3_sitelib}/%{name}/tools/__pycache__/git.cpython*.pyc
-%{python3_sitelib}/%{name}/debranding.py
-%{python3_sitelib}/%{name}/__pycache__/debranding.cpython*.pyc
-%{python3_sitelib}/package_patching.py
-%{python3_sitelib}/__pycache__/package_patching.cpython*
-%{_bindir}/autopatch_package_patching
-
-%package slack
-Summary:        Slack module for the autopatch tool
-Requires:       %{name}-core = %{version}-%{release}
-Requires:       python3
-# python3-slackclient exists in Fedora, but not currently in EPEL9
-Requires:       python3-slackclient
-
-%description slack
-Slack notification module for the autopatch tool
-
-%files slack
-%{python3_sitelib}/%{name}/tools/slack.py
-%{python3_sitelib}/%{name}/tools/__pycache__/slack.cpython*.pyc
-
-%package web
-Summary:        Web interface for the autopatch tool
-Requires:       %{name}-core = %{version}-%{release}
-Requires:       %{name}-git = %{version}-%{release}
-Requires:       %{name}-slack = %{version}-%{release}
-Requires:       python3
-Requires:       python3-flask
-Requires:       python3-werkzeug
-
-%description web
-Web interface for the autopatch tool
-
-%files web
-%{python3_sitelib}/%{name}/webserv.py
-%{python3_sitelib}/%{name}/tools/webserv_tools.py
-%{python3_sitelib}/%{name}/tools/__pycache__/webserv_tools.cpython*.pyc
-%{python3_sitelib}/%{name}/__pycache__/webserv.cpython*.pyc
-
 %changelog
 * Wed May 07 2025 Ben Morrice <ben.morrice@cern.ch> - 1.0.0-1
 - initial release
-- code is split out through subpackages (a metapackage is also provided)
+- autopatch-core subpackage exists for a minimum install
 - autopatch_standalone.py provided as %{bindir}/autopatch
