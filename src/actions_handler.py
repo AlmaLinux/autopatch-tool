@@ -8,9 +8,15 @@ from pathlib import Path
 
 import yaml
 
-from tools.logger import logger
-from tools.tools import run_command
-import tools.rpm
+# First try importing via site-packages path, then try directly from "src"
+try:
+    from autopatch.tools.logger import logger
+    from autopatch.tools.tools import run_command
+    import autopatch.tools.rpm as tools_rpm
+except ImportError:
+    from tools.logger import logger
+    from tools.tools import run_command
+    import tools.rpm as tools_rpm
 
 
 @dataclass
@@ -64,19 +70,16 @@ def process_lines(file_path: Path, target: str, find_lines:list[str], replace_li
 
     while i < len(file):
         if target == "spec":
-            # if tools.rpm.is_spec_comment(file[i]):
+            # if tools_rpm.is_spec_comment(file[i]):
             #     i += 1
             #     continue
-            if tools.rpm.is_changelog(file[i]):
+            if tools_rpm.is_changelog(file[i]):
                 break
 
         if len(find_lines) == 1:
             # Skip comments in spec file only with target as spec and find_lines as single line
             if target == "spec":
-                if (
-                    tools.rpm.is_spec_comment(file[i])
-                    and not tools.rpm.is_spec_comment(find_lines[0])
-                ):
+                if tools_rpm.is_spec_comment(file[i]) and not tools_rpm.is_spec_comment(find_lines[0]):
                     i += 1
                     continue
             line = file[i]
@@ -429,7 +432,7 @@ class ModifyReleaseAction(BaseAction):
             for i, line in enumerate(file):
                 if '%define autorelease' in line:
                     defined_autorelease = True
-                if tools.rpm.is_release(line):
+                if tools_rpm.is_release(line):
                     release = line.split(":")[1].strip()
                     if "%autorelease" in release:
                         logger.info("Skipping setting release as it is set to %autorelease")
@@ -447,14 +450,14 @@ class ModifyReleaseAction(BaseAction):
 
             if autorelease and defined_autorelease:
                 for i, line in enumerate(file):
-                    if tools.rpm.AUTORELEASE_FINAL_LINE in line:
-                        file[i] = tools.rpm.AUTORELEASE_FINAL_LINE + entry.suffix
+                    if tools_rpm.AUTORELEASE_FINAL_LINE in line:
+                        file[i] = tools_rpm.AUTORELEASE_FINAL_LINE + entry.suffix
                         logger.info(f"Added suffix '{entry.suffix}' to {tools.rpm.AUTORELEASE_FINAL_LINE}")
                         break
                 else:
                     raise ActionNotAppliedError(
                         "ModifyReleaseAction",
-                        f"{tools.rpm.AUTORELEASE_FINAL_LINE} not found in spec file"
+                        f"{tools_rpm.AUTORELEASE_FINAL_LINE} not found in spec file"
                     )
             write_file_data(file_path, file)
 
@@ -532,14 +535,14 @@ class ChangelogAction(BaseAction):
         for entry in self.entries:
             file_path = entry.get_target_file_name(package_path)
             spec_info = read_file_data(file_path)
-            if tools.rpm.spec_contains_autochangelog(spec_info):
+            if tools_rpm.spec_contains_autochangelog(spec_info):
                 logger.info("Skipping changelog entries as %autochangelog is present")
                 if 'almalinux changes:' not in entry.line[0].lower():
                     entry.line[0] = f"AlmaLinux changes: {entry.line[0]}"
                     logger.info(f"Added 'AlmaLinux changes' to the top of the changelog {entry.line[0]}")
                 break
-            parsed_data = tools.rpm.prepare_spec_file_data_with_rpmspec(spec_info, file_path)
-            epoch, version, release = tools.rpm.get_version_information(parsed_data)
+            parsed_data = tools_rpm.prepare_spec_file_data_with_rpmspec(spec_info, file_path)
+            epoch, version, release = tools_rpm.get_version_information(parsed_data)
             logger.info(f"Adding changelog entry: {entry}")
             for i, line in enumerate(spec_info):
                 if line == "%changelog":
@@ -637,9 +640,9 @@ class AddFilesAction(BaseAction):
         for entry in self.entries:
             package_name = package_path.name
             is_patches_file = any(Path(package_path).rglob("*.patches"))
-            directive_type = tools.rpm.DirectiveType.SOURCE
+            directive_type = tools_rpm.DirectiveType.SOURCE
             if entry.type == "patch":
-                directive_type = tools.rpm.DirectiveType.PATCH
+                directive_type = tools_rpm.DirectiveType.PATCH
                 if is_patches_file:
                     entry.target = entry.get_file_name(package_path, "*.patches").name
 
@@ -649,7 +652,7 @@ class AddFilesAction(BaseAction):
             logger.info(f"Adding file: {entry}")
 
             if entry.modify_spec:
-                tools.rpm.apply_patch(
+                tools_rpm.apply_patch(
                     spec,
                     entry.name,
                     directive_type,
@@ -733,7 +736,7 @@ class AddLineAction(BaseAction):
             logger.info(f"Adding line to {entry.section} section{f' in subpackage {subpackage}' if subpackage is not None else ''} at {entry.location}: {entry.content}")
             try:
                 file_data = read_file_data(file_path)
-                updated_data = tools.rpm.add_line_to_section(
+                updated_data = tools_rpm.add_line_to_section(
                     file_data,
                     entry.section,
                     entry.location,

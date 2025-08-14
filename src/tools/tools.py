@@ -3,7 +3,11 @@ from pathlib import Path
 from typing import Dict
 from yaml import safe_load
 
-from tools.logger import logger
+# First try importing via site-packages path, then try directly from "src"
+try:
+    from autopatch.tools.logger import logger
+except ImportError:
+    from tools.logger import logger
 
 
 def run_command(command, raise_on_failure=True, without_log=False, shell=False, cwd=None):

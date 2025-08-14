@@ -1,10 +1,16 @@
+#!/usr/bin/env python3
 import os
 import sys
 from logging import INFO, DEBUG
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from src.tools.logger import logger
-from src.debranding import apply_modifications
+# First try importing via site-packages path, then try directly from "src"
+try:
+    from autopatch.tools.logger import logger
+    from autopatch.debranding import apply_modifications
+except ImportError:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+    from src.tools.logger import logger
+    from src.debranding import apply_modifications
 
 import argparse
 
