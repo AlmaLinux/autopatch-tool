@@ -1,5 +1,5 @@
 Name:           autopatch
-Version:        1.0.0
+Version:        1.1.0
 Release:        1%{?dist}
 Summary:        Tool for autopatching source content for debranding/modification
 License:        GPLv3+
@@ -78,6 +78,9 @@ Core components of the autopatch tool
 %{_bindir}/autopatch_validate_config
 
 %changelog
+* Thu Aug 14 2025 Eduard Abdullin <eabdullin@almalinux.org> - 1.1.0-1
+- Bump version to 1.1.0
+
 * Wed May 07 2025 Ben Morrice <ben.morrice@cern.ch> - 1.0.0-1
 - initial release
 - autopatch-core subpackage exists for a minimum install
