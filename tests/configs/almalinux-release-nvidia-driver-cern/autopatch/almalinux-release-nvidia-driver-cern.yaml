@@ -1,0 +1,10 @@
+parameters:
+  ignore_version_macros: true
+  ignore_release_macros: true
+
+actions:
+  - changelog_entry:
+      - name: "CERN Linux Droid"
+        email: "linux.support@cern.ch"
+        line:
+          - "Rebuilt for CERN"
