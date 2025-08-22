@@ -58,6 +58,10 @@ def apply_modifications(
         config_repo.pull()
 
     config_files = get_config_files(autopatch_working_dir, package)
+    if not config_files:
+        logger.warning(f"No config files found for package {package}")
+        raise RuntimeError(f"No config files found for package {package}")
+
     for config_file in config_files:
         logger.info(f"Processing config file {config_file}")
         _al_branch = al_branch
