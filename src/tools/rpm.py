@@ -114,7 +114,7 @@ def prepare_spec_file_data_with_rpmspec(spec: list[str], spec_file_path) -> list
         raise RPMSpecFileParsingError("Failed to parse spec data with rpmspec") from err
 
 
-def get_version_information(spec: list[str]) -> tuple[str, ...]:
+def get_version_information(spec: list[str], ignore_macros: bool) -> tuple[str, ...]:
     """
     Gets epoch, version and release (last in the file).
     Parameters
@@ -135,9 +135,9 @@ def get_version_information(spec: list[str]) -> tuple[str, ...]:
                 version = line.rstrip().split()[-1]
             if release is None and line.startswith("Release:"):
                 release = spec[i].rstrip().split()[-1]
-        if release:
+        if release and not ignore_macros:
             release = _analyze_string(release, spec)
-        if version:
+        if version and not ignore_macros:
             version = _analyze_string(version, spec)
         return epoch, version, release
     except Exception as err:
