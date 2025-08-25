@@ -1,5 +1,5 @@
 Name:           autopatch
-Version:        1.1.0
+Version:        1.1.1
 Release:        1%{?dist}
 Summary:        Tool for autopatching source content for debranding/modification
 License:        GPLv3+
@@ -78,6 +78,10 @@ Core components of the autopatch tool
 %{_bindir}/autopatch_validate_config
 
 %changelog
+* Mon Aug 25 2025 Eduard Abdullin <eabdullin@almalinux.org> - 1.1.1-1
+- Add ignore_version_macros and ignore_release_macros parameters
+- Raise an error if there is no config for a package
+
 * Thu Aug 14 2025 Eduard Abdullin <eabdullin@almalinux.org> - 1.1.0-1
 - Bump version to 1.1.0
 
