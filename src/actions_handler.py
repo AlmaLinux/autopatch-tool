@@ -29,11 +29,15 @@ class GlobalParameters:
     insert_almalinux_line: bool
     custom_target_branch: str
     pre_clean: bool
+    ignore_version_macros: bool
+    ignore_release_macros: bool
 
     def __init__(self, parameters: dict = {}):
         self.insert_almalinux_line = parameters.get("insert_almalinux_line", True)
         self.custom_target_branch = parameters.get("custom_target_branch", "")
         self.pre_clean = parameters.get("pre_clean", False)
+        self.ignore_version_macros = parameters.get("ignore_version_macros", False)
+        self.ignore_release_macros = parameters.get("ignore_release_macros", False)
 
 class ActionNotAppliedError(Exception):
     """
@@ -452,7 +456,7 @@ class ModifyReleaseAction(BaseAction):
                 for i, line in enumerate(file):
                     if tools_rpm.AUTORELEASE_FINAL_LINE in line:
                         file[i] = tools_rpm.AUTORELEASE_FINAL_LINE + entry.suffix
-                        logger.info(f"Added suffix '{entry.suffix}' to {tools.rpm.AUTORELEASE_FINAL_LINE}")
+                        logger.info(f"Added suffix '{entry.suffix}' to {tools_rpm.AUTORELEASE_FINAL_LINE}")
                         break
                 else:
                     raise ActionNotAppliedError(
@@ -541,8 +545,21 @@ class ChangelogAction(BaseAction):
                     entry.line[0] = f"AlmaLinux changes: {entry.line[0]}"
                     logger.info(f"Added 'AlmaLinux changes' to the top of the changelog {entry.line[0]}")
                 break
+            raw_version = raw_release = None
+            if self.global_parameters.ignore_version_macros or self.global_parameters.ignore_release_macros:
+                raw_epoch, raw_version, raw_release = tools_rpm.get_version_information(
+                    spec_info,
+                    True,
+                )
             parsed_data = tools_rpm.prepare_spec_file_data_with_rpmspec(spec_info, file_path)
-            epoch, version, release = tools_rpm.get_version_information(parsed_data)
+            epoch, parsed_version, parsed_release = tools_rpm.get_version_information(
+                parsed_data,
+                False
+            )
+
+            version = raw_version if self.global_parameters.ignore_version_macros else parsed_version
+            release = raw_release if self.global_parameters.ignore_release_macros else parsed_release
+
             logger.info(f"Adding changelog entry: {entry}")
             for i, line in enumerate(spec_info):
                 if line == "%changelog":
@@ -806,6 +823,7 @@ class ConfigReader:
 
         actions_data = config_data.get("actions")
         self.global_parameters = GlobalParameters(config_data.get("parameters", {}))
+
         for action_data in actions_data:
             for action_type, action_entries in action_data.items():
                 action_class = self.ACTION_MAP[action_type]
