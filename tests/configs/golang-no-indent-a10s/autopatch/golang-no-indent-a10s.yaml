@@ -1,0 +1,135 @@
+actions:
+  - replace:
+      - target: "spec"
+        find: |
+              %build
+        replace: |
+              %ifarch x86_64_v2
+              sed -i 's/^GOAMD64=v3$/GOAMD64=v2/' ./go.env
+              grep -q '^GOAMD64=v2$' ./go.env
+              %endif
+              
+              %build
+        count: 1
+      - target: "spec"
+        find: |
+              %ifarch aarch64
+              %bcond_without ignore_tests
+              %else
+              %bcond_with ignore_tests
+              %endif
+        replace: |
+              %ifarch aarch64
+              %bcond_without ignore_tests
+              %else
+              %bcond_with ignore_tests
+              %endif
+              
+              %global race 1
+              %ifarch riscv64
+              %global race 0
+              %endif
+        count: 1
+      - target: "spec"
+        find: |
+              Requires:       %{name}-race = %{version}-%{release}
+        replace: |
+              %if %{race}
+              Requires:       %{name}-race = %{version}-%{release}
+              %endif
+        count: 1
+      - target: "spec"
+        find: |
+              %package race
+              Summary:       Race detetector library object files.
+              Requires:       %{name} = %{version}-%{release}
+              
+              %description    race
+              Binary library objects for Go's race detector.
+        replace: |
+              %if %{race}
+              %package race
+              Summary:       Race detetector library object files.
+              Requires:       %{name} = %{version}-%{release}
+
+              %description    race
+              Binary library objects for Go's race detector.
+              %endif
+        count: 1
+      - target: "spec"
+        find: |
+              GOROOT=$(pwd) PATH=$(pwd)/bin:$PATH go install -race std
+        replace: |
+              %if %{race}
+              GOROOT=$(pwd) PATH=$(pwd)/bin:$PATH go install -race std
+              %endif
+        count: 1
+      - target: "spec"
+        find: |
+              %ifarch x86_64
+              %exclude %{goroot}/src/runtime/race/internal/amd64v1/race_linux.syso
+              %exclude %{goroot}/src/runtime/race/internal/amd64v3/race_linux.syso
+              %else
+              %exclude %{goroot}/src/runtime/race/race_linux_%{gohostarch}.syso
+              %endif
+        replace: |
+              %if %{race}
+              %ifarch x86_64
+              %exclude %{goroot}/src/runtime/race/internal/amd64v1/race_linux.syso
+              %exclude %{goroot}/src/runtime/race/internal/amd64v3/race_linux.syso
+              %else
+              %exclude %{goroot}/src/runtime/race/race_linux_%{gohostarch}.syso
+              %endif
+              %endif
+        count: 1
+      - target: "spec"
+        find: |
+              %files race
+              %ifarch x86_64
+              %{goroot}/src/runtime/race/internal/amd64v1/race_linux.syso
+              %{goroot}/src/runtime/race/internal/amd64v3/race_linux.syso
+              %else
+              %{goroot}/src/runtime/race/race_linux_%{gohostarch}.syso
+              %endif
+        replace: |
+              %if %{race}
+              %files race
+              %ifarch x86_64
+              %{goroot}/src/runtime/race/internal/amd64v1/race_linux.syso
+              %{goroot}/src/runtime/race/internal/amd64v3/race_linux.syso
+              %else
+              %{goroot}/src/runtime/race/race_linux_%{gohostarch}.syso
+              %endif
+              %endif
+        count: 1
+      - target: "spec"
+        find: '  CFLAGS="%{tsan_buildflags} %{tsan_optflag}" CC=clang GOAMD64=v3 ./buildgo.sh'
+        replace: |
+              %ifarch x86_64_v2
+              CFLAGS="%{tsan_buildflags} %{tsan_optflag}" CC=clang GOAMD64=v2 ./buildgo.sh
+              %else
+              CFLAGS="%{tsan_buildflags} %{tsan_optflag}" CC=clang GOAMD64=v3 ./buildgo.sh
+              %endif
+        count: 2
+      - target: "spec"
+        find: |
+              export GOAMD64=v3
+        replace: |
+              %ifarch x86_64_v2
+              export GOAMD64=v2
+              %else
+              export GOAMD64=v3
+              %endif
+        count: -1
+        
+
+  - modify_release:
+    - suffix: ".alma.1"
+      enabled: true
+
+  - changelog_entry:
+      - name: "Eduard Abdullin"
+        email: "eabdullin@almalinux.org"
+        line:
+          - "Update env var for v2"
+          - "Disable race for riscv64"

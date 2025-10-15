@@ -114,13 +114,25 @@ def process_lines(file_path: Path, target: str, find_lines:list[str], replace_li
                                 i -= 1
                                 break
                         else:
+                            indent = ""
+                            indented_lines = replace_lines
+                            if file[i] != find_lines[0]:
+                                indent = file[i][:len(file[i]) - len(file[i].lstrip())]
+                                indented_lines = [replace_lines[0]]
+                                if len(replace_lines) > 1:
+                                    for line in replace_lines[1:]:
+                                        if line.strip():
+                                            indented_lines.append(indent + line)
+                                        else:
+                                            indented_lines.append(line)
+
                             file[i] = file[i].replace(
                                 find_lines[0],
-                                "\n".join(replace_lines) if replace_lines else "",
+                                "\n".join(indented_lines) if indented_lines else "",
                                 1
                             )
                             change_made = True
-                            logger.debug(f"Replaced '{find_lines[0]}' with '{replace_lines}' in line {i+1}")
+                            logger.debug(f"Replaced '{find_lines[0]}' with '{indented_lines}' in line {i+1}")
                         counter += 1
         else:
             stripped_block = [line.lstrip() for line in file[i:i + len(find_lines)]]

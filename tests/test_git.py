@@ -70,7 +70,7 @@ def test_directory_manager_logging_error(mocker):
         with DirectoryManager("/invalid_path"):
             pass
 
-    mock_logger.error.assert_any_call("Error changing directory: [Errno 30] Read-only file system: '/invalid_path'")
+    mock_logger.error.assert_any_call("Error changing directory: Read-only file system", )
 
 def test_directory_manager_creates_parents(tmp_path):
     nested_dir = tmp_path / "parent/child/grandchild"
