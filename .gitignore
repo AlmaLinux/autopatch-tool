@@ -11,3 +11,6 @@ main_git.py
 *namespace
 ansible/inventory/hosts.yml
 diff.diff
+.cas
+run_tests_docker.sh
+Dockerfile.test

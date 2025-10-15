@@ -4,7 +4,7 @@ actions:
         find: "-Cstrip=none"
         replace: |
                   -Cstrip=none
-                    %[0%{?x86_64_v2} ? "-Ctarget_cpu=x86-64-v2" : ""]
+                  %[0%{?x86_64_v2} ? "-Ctarget_cpu=x86-64-v2" : ""]
         count: 1
 
       - target: "spec"
