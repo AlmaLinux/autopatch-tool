@@ -1,7 +1,7 @@
 Summary: Content for the Anaconda built-in help system
 Name: anaconda-user-help
 URL: https://access.redhat.com/documentation
-Version: 8.8.3
+Version: 9.2.1
 Release: 1%{?dist}
 Epoch: 1
 BuildArch: noarch
@@ -22,6 +22,7 @@ This package provides content for the Anaconda built-in help system.
 %patch -P 1 -p1 -b .test
 
 pushd %{name}-%{version}
+  %patch -P 2 -p1 -b .test
   test3
 popd
 
@@ -33,21 +34,13 @@ cp -r * %{buildroot}%{_datadir}/anaconda/help/
 %{_datadir}/anaconda/help/*
 
 %changelog
-* Tue Feb 14 2023 Martin Kolman <mkolman@redhat.com> - 8.8.3-1
-- fix anchor files
-  Related: rhbz#1949071
+* Tue Jan 24 2023 Martin Kolman <mkolman@redhat.com> - 9.2.1-1
+- update help content for RHEL 9.2
+  Resolves: rhbz#2071652
 
-* Thu Feb 02 2023 Martin Kolman <mkolman@redhat.com> - 8.8.2-1
-- fix anchor files
-  Related: rhbz#1949071
-
-* Tue Jan 24 2023 Martin Kolman <mkolman@redhat.com> - 8.8.1-1
-- update help content for RHEL 8.8
-  Resolves: rhbz#1949071
-
-* Fri Aug 19 2022 Martin Kolman <mkolman@redhat.com> - 8.7.1-1
-- update help content for RHEL 8.7
-  Resolves: rhbz#1949071
+* Tue Jan 04 2022 Martin Kolman <mkolman@redhat.com> - 9.0.0-1
+- initial help content for RHEL 9.0
+  Resolves: rhbz#1995939
 
 * Fri Sep 4 2020 Martin Kolman <mkolman@redhat.com> - 8.3.3-1
 - add missing help content for installation progress screen

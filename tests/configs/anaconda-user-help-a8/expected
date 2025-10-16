@@ -22,9 +22,14 @@ This package provides content for the Anaconda built-in help system.
 
 %prep
 %setup -q
+%patch -P 1 -p1 -b .test
 
 # Applying AlmaLinux Patch
 %patch -P 1 -p1 -b .anaconda-user-help-almalinux-branding
+
+pushd %{name}-%{version}
+  test3
+popd
 
 %install
 mkdir -p %{buildroot}%{_datadir}/anaconda/help

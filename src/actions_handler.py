@@ -65,100 +65,166 @@ def write_file_data(path_to_file: Path, data: list[str]):
         f.writelines(f"{line}\n" for line in data)
 
 
-def process_lines(file_path: Path, target: str, find_lines:list[str], replace_lines:list[str], entry_count:int, is_regex: bool = False):
+def _get_indent(line: str) -> str:
+    """Extract indentation from a line."""
+    return line[:len(line) - len(line.lstrip())]
+
+
+def _apply_indentation(lines: list[str], base_indent: str) -> list[str]:
+    """Apply indentation to a list of lines based on the base indentation."""
+    if not lines:
+        return lines
+
+    indented_lines = [lines[0]]
+    for line in lines[1:]:
+        if line.strip():
+            indented_lines.append(base_indent + line)
+        else:
+            indented_lines.append(line)
+    return indented_lines
+
+
+def _should_skip_line(line: str, target: str, find_lines: list[str]) -> bool:
+    """Check if a line should be skipped during processing."""
+    if target == "spec":
+        if tools_rpm.is_spec_comment(line) and not tools_rpm.is_spec_comment(find_lines[0]):
+            return True
+    return False
+
+
+def _process_single_line_regex(file: list[str], i: int, find_lines: list[str], 
+                              replace_lines: list[str], entry_count: int) -> tuple[bool, int]:
+    """Process single line with regex matching."""
+    line = file[i]
+    pattern = re.compile(find_lines[0])
+    matches = list(pattern.finditer(line))
+
+    if not matches:
+        return False, 0
+
+    replacement = "\n".join(replace_lines) if replace_lines else ""
+    count = 1 if entry_count != -1 else 0
+    file[i] = pattern.sub(replacement, line, count)
+
+    logger.debug(f"Replaced regex match '{find_lines[0]}' with '{replace_lines}' in line {i+1}")
+    return True, 1
+
+
+def _process_single_line_literal(file: list[str], i: int, find_lines: list[str], 
+                                replace_lines: list[str], entry_count: int, counter: int) -> tuple[bool, int, int]:
+    """Process single line with literal matching."""
+    line = file[i]
+    count_in_line = line.count(find_lines[0])
+
+    if count_in_line == 0:
+        return False, 0, counter
+
+    changes_made = 0
+    for _ in range(count_in_line):
+        if entry_count != -1 and counter >= entry_count:
+            break
+
+        if not replace_lines:
+            if line.strip() == find_lines[0]:
+                del file[i]
+                logger.debug(f"Deleted line '{find_lines[0]}' at line {i+1}")
+                changes_made += 1
+                return True, changes_made, counter + 1
+        else:
+            if file[i] == find_lines[0]:
+                # Exact line match - use original indentation
+                indented_lines = replace_lines
+            else:
+                # Partial match - preserve existing indentation
+                base_indent = _get_indent(file[i])
+                indented_lines = _apply_indentation(replace_lines, base_indent)
+
+            file[i] = file[i].replace(
+                find_lines[0],
+                "\n".join(indented_lines) if indented_lines else "",
+                1
+            )
+            logger.debug(f"Replaced '{find_lines[0]}' with '{indented_lines}' in line {i+1}")
+            changes_made += 1
+        counter += 1
+
+    return changes_made > 0, changes_made, counter
+
+
+def _process_multi_line_block(file: list[str], i: int, find_lines: list[str], 
+                             replace_lines: list[str], entry_count: int, counter: int) -> tuple[bool, int, int]:
+    """Process multi-line block matching."""
+    if i + len(find_lines) > len(file):
+        return False, 0, counter
+
+    stripped_block = [line.lstrip() for line in file[i:i + len(find_lines)]]
+    stripped_find_lines = [line.lstrip() for line in find_lines]
+
+    if stripped_block != stripped_find_lines:
+        return False, 0, counter
+
+    if entry_count != -1 and counter >= entry_count:
+        return False, 0, counter
+
+    if not replace_lines:
+        del file[i:i + len(find_lines)]
+        logger.debug(f"Deleted block of lines {i+1}-{i+len(find_lines)}.")
+        return True, 1, counter + 1
+    else:
+        base_indent = _get_indent(file[i])
+        formatted_replace_lines = [base_indent + line for line in replace_lines]
+        file[i:i + len(find_lines)] = formatted_replace_lines
+        logger.debug(f"Replaced lines {i+1}-{i+len(find_lines)} with {replace_lines}.")
+        return True, 1, counter + 1
+
+
+def process_lines(file_path: Path, target: str, find_lines: list[str], 
+                 replace_lines: list[str], entry_count: int, is_regex: bool = False):
+    """Process lines in a file, finding and replacing content."""
+    file = read_file_data(file_path)
+    change_made = False
     counter = 0
     i = 0
-    file = read_file_data(file_path)
-
-    change_made = False
 
     while i < len(file):
-        if target == "spec":
-            # if tools_rpm.is_spec_comment(file[i]):
-            #     i += 1
-            #     continue
-            if tools_rpm.is_changelog(file[i]):
-                break
+        # Stop processing at changelog in spec files
+        if target == "spec" and tools_rpm.is_changelog(file[i]):
+            break
 
+        # Skip lines that should be ignored
+        if _should_skip_line(file[i], target, find_lines):
+            i += 1
+            continue
+
+        # Process single line
         if len(find_lines) == 1:
-            # Skip comments in spec file only with target as spec and find_lines as single line
-            if target == "spec":
-                if tools_rpm.is_spec_comment(file[i]) and not tools_rpm.is_spec_comment(find_lines[0]):
-                    i += 1
-                    continue
-            line = file[i]
             if is_regex:
-                pattern = re.compile(find_lines[0])
-                matches = list(pattern.finditer(line))
-                if matches:
-                    # Process matches in reverse to avoid index issues
-                    for _ in reversed(matches):
-                        replacement = "\n".join(replace_lines) if replace_lines else ""
-                        count = 1 if entry_count != -1 else 0
-                        file[i] = pattern.sub(replacement, line, count)
-                        change_made = True
-                        logger.debug(f"Replaced regex match '{find_lines[0]}' with '{replace_lines}' in line {i+1}")
-                        counter += 1
-            # Non regex processing
+                made_change, change_count = _process_single_line_regex(
+                    file, i, find_lines, replace_lines, entry_count
+                )
+                if made_change:
+                    change_made = True
+                    counter += change_count
             else:
-                count_in_line = line.count(find_lines[0])
-                if count_in_line > 0:
-                    for _ in range(count_in_line):
-                        if entry_count != -1 and counter >= entry_count:
-                            break
-                        if not replace_lines:
-                            if line.strip() == find_lines[0]:
-                                del file[i]
-                                change_made = True
-                                logger.debug(f"Deleted line '{find_lines[0]}' at line {i+1}")
-                                i -= 1
-                                break
-                        else:
-                            indent = ""
-                            indented_lines = replace_lines
-                            if file[i] != find_lines[0]:
-                                indent = file[i][:len(file[i]) - len(file[i].lstrip())]
-                                indented_lines = [replace_lines[0]]
-                                if len(replace_lines) > 1:
-                                    for line in replace_lines[1:]:
-                                        if line.strip():
-                                            indented_lines.append(indent + line)
-                                        else:
-                                            indented_lines.append(line)
-
-                            file[i] = file[i].replace(
-                                find_lines[0],
-                                "\n".join(indented_lines) if indented_lines else "",
-                                1
-                            )
-                            change_made = True
-                            logger.debug(f"Replaced '{find_lines[0]}' with '{indented_lines}' in line {i+1}")
-                        counter += 1
+                made_change, change_count, counter = _process_single_line_literal(
+                    file, i, find_lines, replace_lines, entry_count, counter
+                )
+                if made_change:
+                    change_made = True
+                    if not replace_lines and change_count > 0:
+                        # Line was deleted, don't increment i
+                        continue
         else:
-            stripped_block = [line.lstrip() for line in file[i:i + len(find_lines)]]
-            stripped_find_lines = [line.lstrip() for line in find_lines]
+            # Process multi-line block
+            made_change, change_count, counter = _process_multi_line_block(
+                file, i, find_lines, replace_lines, entry_count, counter
+            )
+            if made_change:
+                change_made = True
+                if replace_lines:
+                    i += len(replace_lines) - 1
 
-            if stripped_block == stripped_find_lines:
-                if entry_count != -1 and counter >= entry_count:
-                    break
-                
-                if not replace_lines:
-                    del file[i:i + len(find_lines)]
-                    change_made = True
-                    logger.debug(f"Deleted block of lines {i+1}-{i+len(find_lines)}.")
-                    i -= len(find_lines)
-                else:
-                    formatted_replace_lines = [
-                        file[i][:len(file[i]) - len(file[i].lstrip())] + line
-                        for line in replace_lines
-                    ]
-                    file[i:i + len(find_lines)] = formatted_replace_lines
-                    change_made = True
-                    logger.debug(f"Replaced lines {i+1}-{i+len(find_lines)} with {replace_lines}.")
-                counter += 1
-                i += len(replace_lines) - 1
         i += 1
-
     if not change_made:
         action_type = "DeleteAction" if not replace_lines else "ReplaceAction"
         raise ActionNotAppliedError(

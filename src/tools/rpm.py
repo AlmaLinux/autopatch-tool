@@ -231,10 +231,13 @@ def find_last_directive(spec: list[str], directive_type: DirectiveType):
 
     for i, line in enumerate(spec):
         # Track conditional blocks
-        if re.match(r"^%endif\b", line):
+        if re.match(r"^%endif\b", line) or re.match(r"^popd\b", line):
             in_conditional = True
             last_endif_index = i - 1
-        elif re.match(r"^%if*", line) and in_conditional:
+        elif (
+            (re.match(r"^%if*", line) or re.match(r"^pushd*", line)) and
+            in_conditional
+        ):
             in_conditional = False
 
         # Track the last directive
@@ -283,6 +286,8 @@ def get_patch_directive_type(line: str) -> PatchDirectiveType:
     """
     Get the type of patch directive from a line in the spec file.
     """
+    line = line.strip()
+
     if re.match(r"^%patch[0-9]{1,5}", line):
         return PatchDirectiveType.CLASSIC
     if re.match(r"^%patch\s+-P\s+[0-9]{1,5}", line):
@@ -360,13 +365,14 @@ def find_index_to_insert(spec: list[str]) -> int:
     conditional_start_index = None
     last_patch_apply_index = None
     for i, line in enumerate(spec):
-        # Track if we're in a conditional block (remember we're going backwards)
-        # Track only if we haven't found the last patch yet
-        if last_patch_apply_index is None and re.match(r"^%endif\b", line):
+        # Track conditional blocks
+        if last_patch_apply_index is None and (re.match(r"^%endif\b", line) or re.match(r"^popd\b", line)):
             in_conditional = True
             conditional_start_index = i
-        elif re.match(r"^%if*", line) and in_conditional:
-            # We've reached the start of conditional block
+        elif (
+            in_conditional and
+            (re.match(r"^%if*", line) or re.match(r"^pushd*", line))
+        ):
             in_conditional = False
             if last_patch_apply_index is None:
                 # If we haven't found a patch yet, this conditional block isn't relevant
