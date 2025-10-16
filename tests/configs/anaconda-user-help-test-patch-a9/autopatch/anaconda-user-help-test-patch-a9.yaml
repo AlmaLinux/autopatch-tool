@@ -1,0 +1,15 @@
+actions:
+  - modify_release:
+    - suffix: ".alma.1"
+      enabled: true
+
+  - changelog_entry:
+      - name: "Eduard Abdullin"
+        email: "eabdullin@almalinux.org"
+        line:
+          - "Apply AlmaLinux branding patch"
+
+  - add_files:
+      - type: "patch"
+        name: "anaconda-user-help-almalinux-branding.patch"
+        number: "Latest"

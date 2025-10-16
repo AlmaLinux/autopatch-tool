@@ -20,6 +20,11 @@ This package provides content for the Anaconda built-in help system.
 %prep
 %setup -q
 
+pushd %{name}-%{version}
+  %patch -P 1 -p1 -b .test
+  test3
+popd
+
 %install
 mkdir -p %{buildroot}%{_datadir}/anaconda/help
 cp -r * %{buildroot}%{_datadir}/anaconda/help/
