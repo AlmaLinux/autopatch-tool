@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="autopatch",
-    version="1.1.1",
+    version="1.1.2",
     description="Tool for autopatching source content for debranding/modification",
     author="AlmaLinux",
     author_email="info@almalinux.org",
