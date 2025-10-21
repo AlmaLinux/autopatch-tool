@@ -3,6 +3,8 @@ parameters:
   insert_almalinux_line: true  # whether to apply the AlmaLinux line in the spec file, default is "true". Has lower priority than the "insert_almalinux_line" parameter in the "add_files" section.
   custom_target_branch: "custom_target_branch_name" # custom branch to push the changes to
   pre_clean: true # whether to clean the package repository before merging branches, default is "false". Should be used only if the package has conflict with types of files in the repository.
+  ignore_version_macros: true # whether to ignore the version macros in the spec file, default is "false". Returns raw version from the spec file.
+  ignore_release_macros: true # whether to ignore the release macros in the spec file, default is "false". Returns raw release from the spec file.
 
 # actions - section for all actions related to files, including the spec file
 actions:

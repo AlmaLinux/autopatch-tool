@@ -90,9 +90,9 @@ class GitRepository:
         logger.info(f"Pulling repository {self.url} branch {branch}")
         self.run_in_repo("git", "pull", "origin", branch)
 
-    def create_tag(self, tag: str):
-        logger.info(f"Creating tag {tag}")
-        self.run_in_repo("git", "tag", tag)
+    def create_tag(self, tag: str, prefix: str = ""):
+        logger.info(f"Creating tag {prefix}{tag}")
+        self.run_in_repo("git", "tag", f"{prefix}{tag}")
 
     def push_tags(self):
         logger.info(f"Pushing tag new tags to {self.name}")
