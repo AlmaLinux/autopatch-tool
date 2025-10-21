@@ -38,6 +38,7 @@ class GlobalParameters:
         self.pre_clean = parameters.get("pre_clean", False)
         self.ignore_version_macros = parameters.get("ignore_version_macros", False)
         self.ignore_release_macros = parameters.get("ignore_release_macros", False)
+        self.tag_prefix = parameters.get("tag_prefix", "") # Currently not used
 
 class ActionNotAppliedError(Exception):
     """
