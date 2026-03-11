@@ -80,6 +80,45 @@ def test_directory_manager_creates_parents(tmp_path):
 
 
 
+def test_create_tag_without_prefix(temp_git_repo):
+    repo = GitRepository(str(temp_git_repo), clone=False, local_repo=True)
+    repo.create_tag("v1.0.0")
+    result = subprocess.run(
+        ["git", "tag", "--list"],
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "v1.0.0" in result.stdout.splitlines()
+
+def test_create_tag_with_prefix(temp_git_repo):
+    repo = GitRepository(str(temp_git_repo), clone=False, local_repo=True)
+    repo.create_tag("v1.0.0", prefix="release/")
+    result = subprocess.run(
+        ["git", "tag", "--list"],
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    tags = result.stdout.splitlines()
+    assert "release/v1.0.0" in tags
+    assert "v1.0.0" not in tags
+
+def test_create_tag_with_empty_prefix(temp_git_repo):
+    repo = GitRepository(str(temp_git_repo), clone=False, local_repo=True)
+    repo.create_tag("v2.0.0", prefix="")
+    result = subprocess.run(
+        ["git", "tag", "--list"],
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "v2.0.0" in result.stdout.splitlines()
+
+
 def test_clone_real_repository():
     tmpdir = Path("tmpdir")
     repo_path = tmpdir / "test_repo"

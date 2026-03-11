@@ -25,6 +25,45 @@ def create_temp_config_file(tmp_path):
     return _create_temp_config_file
 
 
+def test_global_parameters_tag_prefix_default():
+    params = GlobalParameters()
+    assert params.tag_prefix == ""
+
+def test_global_parameters_tag_prefix_custom():
+    params = GlobalParameters({"tag_prefix": "v"})
+    assert params.tag_prefix == "v"
+
+def test_global_parameters_tag_prefix_complex():
+    params = GlobalParameters({"tag_prefix": "release/"})
+    assert params.tag_prefix == "release/"
+
+def test_global_parameters_tag_prefix_from_config(create_temp_config_file):
+    config_string = """
+parameters:
+  tag_prefix: "my-prefix-"
+actions:
+  - replace:
+      - target: "spec"
+        find: "RHEL"
+        replace: "AlmaLinux"
+"""
+    temp_config = create_temp_config_file(config_string)
+    config_reader = ConfigReader(temp_config)
+    assert config_reader.global_parameters.tag_prefix == "my-prefix-"
+
+def test_global_parameters_tag_prefix_empty_from_config(create_temp_config_file):
+    config_string = """
+actions:
+  - replace:
+      - target: "spec"
+        find: "RHEL"
+        replace: "AlmaLinux"
+"""
+    temp_config = create_temp_config_file(config_string)
+    config_reader = ConfigReader(temp_config)
+    assert config_reader.global_parameters.tag_prefix == ""
+
+
 def test_add_files_entry_valid():
     entry = AddFilesEntry(global_parameters=GlobalParameters(), type="source", name="example.tar.gz", number=1)
     assert entry.type == "source"

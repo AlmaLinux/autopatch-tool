@@ -31,6 +31,7 @@ class GlobalParameters:
     pre_clean: bool
     ignore_version_macros: bool
     ignore_release_macros: bool
+    rhel_version: str
 
     def __init__(self, parameters: dict = {}):
         self.insert_almalinux_line = parameters.get("insert_almalinux_line", True)
@@ -38,7 +39,8 @@ class GlobalParameters:
         self.pre_clean = parameters.get("pre_clean", False)
         self.ignore_version_macros = parameters.get("ignore_version_macros", False)
         self.ignore_release_macros = parameters.get("ignore_release_macros", False)
-        self.tag_prefix = parameters.get("tag_prefix", "") # Currently not used
+        self.tag_prefix = parameters.get("tag_prefix", "")
+        self.rhel_version = parameters.get("rhel_version", "8")
 
 class ActionNotAppliedError(Exception):
     """
@@ -513,11 +515,11 @@ class ModifyReleaseAction(BaseAction):
             action_applied = False
 
             for i, line in enumerate(file):
-                if '%define autorelease' in line:
+                if re.search(r'%(?:define|global)\s+autorelease', line):
                     defined_autorelease = True
                 if tools_rpm.is_release(line):
                     release = line.split(":")[1].strip()
-                    if "%autorelease" in release:
+                    if re.search(r'%\{?autorelease\}?', release):
                         logger.info("Skipping setting release as it is set to %autorelease")
                         autorelease = True
                         action_applied = True
@@ -630,7 +632,9 @@ class ChangelogAction(BaseAction):
                     spec_info,
                     True,
                 )
-            parsed_data = tools_rpm.prepare_spec_file_data_with_rpmspec(spec_info, file_path)
+            parsed_data = tools_rpm.prepare_spec_file_data_with_rpmspec(
+                spec_info, file_path, self.global_parameters.rhel_version
+            )
             epoch, parsed_version, parsed_release = tools_rpm.get_version_information(
                 parsed_data,
                 False
@@ -859,12 +863,13 @@ class ConfigReader:
         "add_line": AddLineAction,
     }
 
-    def __init__(self, config_source):
+    def __init__(self, config_source, rhel_version: str = "8"):
         if isinstance(config_source, (str, bytes, Path)):
             self.config_source = Path(config_source)
         else:
             self.config_source = config_source
         self.actions = []
+        self.rhel_version = rhel_version
         self.global_parameters = GlobalParameters()
         self._read_config()
 
@@ -901,7 +906,9 @@ class ConfigReader:
         self._validate_config(config_data)
 
         actions_data = config_data.get("actions")
-        self.global_parameters = GlobalParameters(config_data.get("parameters", {}))
+        parameters = config_data.get("parameters", {})
+        parameters.setdefault("rhel_version", self.rhel_version)
+        self.global_parameters = GlobalParameters(parameters)
 
         for action_data in actions_data:
             for action_type, action_entries in action_data.items():

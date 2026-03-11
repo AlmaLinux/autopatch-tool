@@ -5,10 +5,12 @@ try:
     from autopatch.tools.logger import logger
     from autopatch.actions_handler import ConfigReader
     from autopatch.tools.git import GitRepository, GitAlmaLinux, DirectoryManager
+    from autopatch.tools.rpm import extract_rhel_version
 except ImportError:
     from tools.logger import logger
     from actions_handler import ConfigReader
     from tools.git import GitRepository, GitAlmaLinux, DirectoryManager
+    from tools.rpm import extract_rhel_version
 
 BRANCH_NOT_MODIFIED = "Branch is not modified"
 PACKAGE_NOT_MODIFIED = "Package is not modified"
@@ -57,6 +59,9 @@ def apply_modifications(
         config_repo.checkout_branch(config_branch)
         config_repo.pull()
 
+    rhel_version = extract_rhel_version(branch)
+    logger.info(f"Detected RHEL version: {rhel_version} (from branch '{branch}')")
+
     config_files = get_config_files(autopatch_working_dir, package)
     if not config_files:
         logger.warning(f"No config files found for package {package}")
@@ -66,7 +71,10 @@ def apply_modifications(
         logger.info(f"Processing config file {config_file}")
         _al_branch = al_branch
 
-        config = ConfigReader(f"{autopatch_working_dir}/{package}/{config_file}")
+        config = ConfigReader(
+            f"{autopatch_working_dir}/{package}/{config_file}",
+            rhel_version=rhel_version
+        )
         if config.global_parameters.custom_target_branch:
             _al_branch = config.global_parameters.custom_target_branch
 
@@ -107,7 +115,7 @@ def apply_modifications(
 
             git_repo.commit(changelog_entries, name, email)
             if not no_tag:
-                git_repo.create_tag(tag)
+                git_repo.create_tag(tag, prefix=config.global_parameters.tag_prefix)
             git_repo.push(_al_branch)
             git_repo.notarize_commit(upstream_hash)
 

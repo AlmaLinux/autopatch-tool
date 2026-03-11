@@ -1,0 +1,22 @@
+actions:
+  - replace:
+      - target: "spec"
+        find: |
+              # Downstream branding
+              Patch: 0001-RHEL10-style-illustrations.patch
+        replace: |
+              %if 0%{!?almalinux}
+              # Downstream branding
+              Patch: 0001-RHEL10-style-illustrations.patch
+              %endif
+        count: 1
+
+  - modify_release:
+    - suffix: ".alma.1"
+      enabled: true
+
+  - changelog_entry:
+      - name: "Eduard Abdullin"
+        email: "eabdullin@almalinux.org"
+        line:
+          - "Don’t apply the RHEL patch on AlmaLinux"

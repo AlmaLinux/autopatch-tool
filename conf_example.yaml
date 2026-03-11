@@ -5,6 +5,7 @@ parameters:
   pre_clean: true # whether to clean the package repository before merging branches, default is "false". Should be used only if the package has conflict with types of files in the repository.
   ignore_version_macros: true # whether to ignore the version macros in the spec file, default is "false". Returns raw version from the spec file.
   ignore_release_macros: true # whether to ignore the release macros in the spec file, default is "false". Returns raw release from the spec file.
+  tag_prefix: "my-prefix-" # prefix to prepend to the git tag, default is "" (no prefix)
 
 # actions - section for all actions related to files, including the spec file
 actions:
