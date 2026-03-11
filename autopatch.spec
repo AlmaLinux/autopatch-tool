@@ -1,5 +1,5 @@
 Name:           autopatch
-Version:        1.1.2
+Version:        1.1.3
 Release:        1%{?dist}
 Summary:        Tool for autopatching source content for debranding/modification
 License:        GPLv3+
@@ -78,6 +78,10 @@ Core components of the autopatch tool
 %{_bindir}/autopatch_validate_config
 
 %changelog
+* Mon Oct 20 2025 Eduard Abdullin <eabdullin@almalinux.org> - 1.1.2-1
+- Add tag_prefix support in actions_handler and debranding
+- Fix autorelease detection and make rhel_version dynamic
+
 * Mon Oct 20 2025 Eduard Abdullin <eabdullin@almalinux.org> - 1.1.2-1
 - Fix bug with patch directive in pushd block
 - Add indents for the multilines
