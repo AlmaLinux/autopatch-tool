@@ -247,7 +247,20 @@ Add RISC-V support by adjusting arch lists and adding patches.
 ## Workflow: Creating a New Autopatch Config
 
 1. **Clone/init the autopatch repo** for the package on the correct branch (`a8`, `a9`, `a10s`, etc.)
-2. **Identify changes needed** by diffing the AlmaLinux dist-git branch against the upstream CentOS import
+2. **Identify changes needed** by diffing the AlmaLinux dist-git branch against the upstream CentOS import. CentOS branches map to AlmaLinux branches as follows:
+
+   | CentOS (upstream) | AlmaLinux |
+   |---|---|
+   | `c8` | `a8` |
+   | `c9` | `a9` |
+   | `c10` | `a10` |
+   | `c10s` | `a10s` |
+   | `c8-stream-rhel8` | `a8-stream-rhel8` |
+
+   For example, to see what AlmaLinux changed in a package for EL8:
+   ```
+   git log c8..a8 --oneline
+   ```
 3. **Create `config.yaml`** using the action types above
 4. **Place patch/source files** in `files/` directory
 5. **Use `modify_release`** (not `replace`) for the release suffix
@@ -261,4 +274,3 @@ Add RISC-V support by adjusting arch lists and adding patches.
 - Glob patterns (e.g. `"kernel*.config"`) work in `replace` target but not in `delete_line`.
 - Multi-line `find`/`replace` values must preserve exact indentation from the original file.
 - When a patch is generated against a tree with earlier patches applied, verify context lines match post-patch state (use `patch --fuzz=0` to test, since `%autosetup` uses `--fuzz=0`).
-
