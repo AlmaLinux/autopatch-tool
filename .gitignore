@@ -16,3 +16,5 @@ run_tests_docker.sh
 Dockerfile.test
 requirements.txt
 src/test.py
+.cursor/plans
+.ansible
