@@ -10,7 +10,7 @@ except ImportError:
     from tools.logger import logger
 
 
-def run_command(command, raise_on_failure=True, without_log=False, shell=False, cwd=None):
+def run_command(command, raise_on_failure=True, without_log=False, shell=False, cwd=None, timeout=None):
     try:
         command_str = command if shell else ' '.join(command)
         if not without_log:
@@ -21,6 +21,7 @@ def run_command(command, raise_on_failure=True, without_log=False, shell=False, 
             text=True,
             shell=shell,
             cwd=cwd,
+            timeout=timeout,
             check=False
         )
         if result.returncode != 0:

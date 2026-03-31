@@ -1,4 +1,5 @@
 import json
+import os
 from flask import (
     Response,
     Flask,
@@ -89,6 +90,22 @@ def debrand_packages():
     except Exception as err:
         logger.error(err)
         tools_slack.failed_message(repo_name, branch, str(err))
+        if os.environ.get("AGENT_ENABLED", "").lower() == "true":
+            try:
+                from agent_handler import fire_agent
+            except ImportError:
+                from autopatch.agent_handler import fire_agent
+            try:
+                agent_pid = fire_agent(repo_name, branch, err)
+                if agent_pid:
+                    logger.info("Agent launched: pid %s", agent_pid)
+            except Exception as agent_err:
+                logger.error("Agent launch failed: %s", agent_err)
+        return jsonify_response(
+            result={'message': str(err)},
+            status_code=HTTP_200_OK,
+            success=False,
+        )
 
 
 @app.errorhandler(InternalServerError)

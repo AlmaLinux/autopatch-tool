@@ -6,11 +6,13 @@ try:
     from autopatch.actions_handler import ConfigReader
     from autopatch.tools.git import GitRepository, GitAlmaLinux, DirectoryManager
     from autopatch.tools.rpm import extract_rhel_version
+    from autopatch.tools.branch import resolve_config_branch, strip_beta
 except ImportError:
     from tools.logger import logger
     from actions_handler import ConfigReader
     from tools.git import GitRepository, GitAlmaLinux, DirectoryManager
     from tools.rpm import extract_rhel_version
+    from tools.branch import resolve_config_branch, strip_beta
 
 BRANCH_NOT_MODIFIED = "Branch is not modified"
 PACKAGE_NOT_MODIFIED = "Package is not modified"
@@ -34,10 +36,7 @@ def apply_modifications(
 ):
     autopatch_working_dir = os.getcwd() + "/autopatch-namespace"
     rpms_working_dir = os.getcwd() + "/rpms-namespace"
-    config_branch = al_branch = target_branch
-
-    if not target_branch:
-        config_branch = al_branch = branch.replace("c", "a", 1)
+    config_branch = al_branch = resolve_config_branch(branch, target_branch)
 
     if package not in GitAlmaLinux.get_list_of_modified_packages():
         logger.info(f"Package {package} is not modified")
@@ -46,7 +45,7 @@ def apply_modifications(
     config_branches = GitAlmaLinux.get_branches_from_package(package)
 
     if config_branch not in config_branches and '-beta' in config_branch:
-        config_branch = al_branch.replace("-beta", "")
+        config_branch = strip_beta(al_branch)
 
     if config_branch not in config_branches:
         logger.info(f"Branch {al_branch} does not exist")

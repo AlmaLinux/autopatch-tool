@@ -12,6 +12,12 @@ setup(
         "autopatch": "src",
         "autopatch.tools": "src/tools",
     },
+    data_files=[
+        ("share/autopatch", [
+            "agent/Containerfile",
+            "agent/entrypoint.sh",
+        ]),
+    ],
     entry_points={
         "console_scripts": [
             "autopatch=autopatch_standalone:main",
