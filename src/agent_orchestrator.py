@@ -30,7 +30,7 @@ WORK_DIR_TTL_SEC = 3600
 try:
     from autopatch.tools.logger import logger
     from autopatch.tools.tools import run_command
-    from autopatch.tools.branch import resolve_config_branch, strip_beta
+    from autopatch.tools.branch import resolve_config_branch, strip_beta, get_sibling_branches
     import autopatch.tools.slack as tools_slack
 except ImportError:
     import logging
@@ -42,10 +42,11 @@ except ImportError:
     except ImportError:
         run_command = None
     try:
-        from tools.branch import resolve_config_branch, strip_beta
+        from tools.branch import resolve_config_branch, strip_beta, get_sibling_branches
     except ImportError:
         resolve_config_branch = None
         strip_beta = None
+        get_sibling_branches = None
     try:
         import tools.slack as tools_slack
     except ImportError:
@@ -73,6 +74,7 @@ def _fix_volume_permissions(work_dir: str, package: str) -> None:
     for path in (
         os.path.join(work_dir, "autopatch", package),
         os.path.join(work_dir, "rpms", package),
+        os.path.join(work_dir, "autopatch_ref", package),
         os.path.join(work_dir, "result"),
     ):
         if os.path.exists(path):
@@ -128,6 +130,55 @@ def _checkout_branches(
     return config_branch
 
 
+def _checkout_reference_branch(
+    work_dir: str, package: str, config_branch: str,
+) -> str | None:
+    """Prepare a sibling branch as read-only reference for the agent.
+
+    The orchestrator only makes the data available — the actual comparison
+    and fix detection happens inside the agent container (Claude Code).
+    Tries siblings in priority order (stream first, then stable/beta) and
+    returns the first one that exists in the repo.
+    """
+    siblings = get_sibling_branches(config_branch)
+    if not siblings:
+        return None
+
+    autopatch_dir = os.path.join(work_dir, "autopatch", package)
+
+    result = run_command(
+        ["git", "branch", "-a"],
+        cwd=autopatch_dir, raise_on_failure=False,
+    )
+    if result is None or result.returncode != 0:
+        return None
+    remote_branches = result.stdout
+
+    for sibling in siblings:
+        if sibling not in remote_branches:
+            logger.info(
+                "Sibling branch %s not found in autopatch repo, trying next",
+                sibling,
+            )
+            continue
+
+        ref_dir = os.path.join(work_dir, "autopatch_ref", package)
+        os.makedirs(os.path.dirname(ref_dir), exist_ok=True)
+        wt_result = run_command(
+            ["git", "worktree", "add", ref_dir, sibling],
+            cwd=autopatch_dir, raise_on_failure=False,
+        )
+        if wt_result is None or wt_result.returncode != 0:
+            logger.warning("Failed to create worktree for reference branch %s", sibling)
+            continue
+
+        logger.info("Checked out reference branch %s into %s", sibling, ref_dir)
+        return sibling
+
+    logger.info("No sibling branches found for %s", config_branch)
+    return None
+
+
 def _stream_to_logger_and_file(stream, log_file, prefix=""):
     """Read a stream line-by-line, writing to both logger and a file."""
     try:
@@ -152,6 +203,7 @@ def _run_container(
     image: str,
     auth_volume: str,
     timeout: int,
+    reference_branch: str | None = None,
 ) -> tuple[int, str]:
     """Run the agent container (blocking), streaming output to logger and file.
 
@@ -169,8 +221,17 @@ def _run_container(
         "-v", f"{work_dir}/rpms/{package}:/workspace/rpms/{package}:z",
         "-v", f"{work_dir}/error_context.json:/workspace/error_context.json:ro,z",
         "-v", f"{work_dir}/result:/workspace/result:z",
-        image,
     ]
+
+    if reference_branch:
+        ref_dir = os.path.join(work_dir, "autopatch_ref", package)
+        if os.path.isdir(ref_dir):
+            cmd += [
+                "-e", f"REFERENCE_BRANCH={reference_branch}",
+                "-v", f"{ref_dir}:/workspace/autopatch_ref/{package}:ro,z",
+            ]
+
+    cmd.append(image)
 
     log_dir = os.path.join(AGENT_LOG_DIR, package)
     os.makedirs(log_dir, exist_ok=True)
@@ -456,6 +517,22 @@ def _send_slack(
         logger.error("Slack notification failed: %s", exc)
 
 
+def _remove_worktrees(work_dir: str) -> None:
+    """Properly remove any git worktrees before deleting the work dir."""
+    autopatch_dir_parent = os.path.join(work_dir, "autopatch")
+    ref_dir_parent = os.path.join(work_dir, "autopatch_ref")
+    if not os.path.isdir(ref_dir_parent):
+        return
+    for pkg in os.listdir(ref_dir_parent):
+        ref_path = os.path.join(ref_dir_parent, pkg)
+        main_repo = os.path.join(autopatch_dir_parent, pkg)
+        if os.path.isdir(main_repo):
+            run_command(
+                ["git", "worktree", "remove", "--force", ref_path],
+                cwd=main_repo, raise_on_failure=False,
+            )
+
+
 def _cleanup_old_workdirs() -> None:
     """Remove agent work dirs older than WORK_DIR_TTL_SEC from /tmp."""
     now = time.time()
@@ -467,6 +544,7 @@ def _cleanup_old_workdirs() -> None:
         try:
             age = now - os.path.getmtime(path)
             if age > WORK_DIR_TTL_SEC:
+                _remove_worktrees(path)
                 shutil.rmtree(path, ignore_errors=True)
                 logger.info("Cleaned up old work dir %s (age=%ds)", path, int(age))
         except OSError:
@@ -524,12 +602,21 @@ def run_pipeline(
             config_branch, pr_target_branch, branch,
         )
 
+        reference_branch = _checkout_reference_branch(
+            work_dir, package, config_branch,
+        )
+        if reference_branch:
+            logger.info(
+                "Reference branch %s available for comparison", reference_branch,
+            )
+
         _fix_volume_permissions(work_dir, package)
 
         logger.info("Running agent container (work_dir=%s)...", work_dir)
         exit_code, container_stdout = _run_container(
             work_dir, package, branch, config_branch,
             dry_run, image, auth_volume, timeout,
+            reference_branch=reference_branch,
         )
         logger.info("Container exited with code %d", exit_code)
 

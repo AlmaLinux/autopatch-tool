@@ -25,12 +25,20 @@ fi
 echo "=== Autopatch Agent: $PACKAGE @ $BRANCH (config: $CONFIG_BRANCH) ==="
 
 DRY_RUN="${DRY_RUN:-false}"
+REFERENCE_BRANCH="${REFERENCE_BRANCH:-}"
 
 PROMPT="Fix autopatch failure for package \"${PACKAGE}\" on branch \"${BRANCH}\".
 The autopatch config branch is \"${CONFIG_BRANCH}\" (config.yaml lives here).
 The rpms branch is \"${BRANCH}\" (upstream spec file lives here).
 Error context: /workspace/error_context.json
 DRY_RUN=${DRY_RUN}"
+
+if [ -n "$REFERENCE_BRANCH" ]; then
+    PROMPT="${PROMPT}
+REFERENCE_BRANCH=${REFERENCE_BRANCH}
+Reference config from the stream branch is available at /workspace/autopatch_ref/${PACKAGE}/ (read-only).
+Check it FIRST — the stream branch often already has the fix you need."
+fi
 
 RESULT_FILE="/workspace/result/agent_result.json"
 STDOUT_LOG="/workspace/result/claude_stdout.log"

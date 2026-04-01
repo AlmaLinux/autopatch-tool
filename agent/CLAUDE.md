@@ -21,6 +21,18 @@ This is an isolated container environment for automatic autopatch failure recove
 - `BRANCH` -- rpms branch from webhook (e.g. `c9-beta`) — upstream spec file is here
 - `CONFIG_BRANCH` -- resolved autopatch config branch (e.g. `a9`) — config.yaml is here
 - `DRY_RUN` -- if `"true"`, analyze only, do not commit changes
+- `REFERENCE_BRANCH` -- (optional) stream branch name (e.g. `a10s`) that may already have a fix
+
+## Reference Branch
+
+When processing any branch, the orchestrator looks for a sibling branch that may
+already have a fix (e.g. a10→a10s, a10-beta→a10s or a10, a10s→a10).
+If found, it mounts it read-only at:
+
+    /workspace/autopatch_ref/{package}/
+
+The agent should compare the reference config with the current config FIRST,
+since sibling branches often already have the same fix applied.
 
 ## Important: No Git/Network Operations
 

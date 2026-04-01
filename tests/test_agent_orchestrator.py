@@ -10,6 +10,7 @@ from freezegun import freeze_time
 
 from src.agent_orchestrator import (
     _checkout_branches,
+    _checkout_reference_branch,
     _clone_repos,
     _commit_and_push,
     _create_pull_request,
@@ -20,7 +21,7 @@ from src.agent_orchestrator import (
     _send_slack,
     run_pipeline,
 )
-from src.tools.branch import resolve_config_branch, strip_beta
+from src.tools.branch import resolve_config_branch, strip_beta, get_sibling_branches
 
 
 def _ok(**kwargs):
@@ -83,6 +84,139 @@ class TestResolveConfigBranch:
 
     def test_strip_beta_noop(self):
         assert strip_beta("a9") == "a9"
+
+
+class TestGetSiblingBranches:
+
+    def test_a10_returns_stream_and_beta(self):
+        assert get_sibling_branches("a10") == ["a10s", "a10-beta"]
+
+    def test_a10_beta_returns_stream_and_stable(self):
+        assert get_sibling_branches("a10-beta") == ["a10s", "a10"]
+
+    def test_a10s_returns_stable_and_beta(self):
+        assert get_sibling_branches("a10s") == ["a10", "a10-beta"]
+
+    def test_a9_returns_stream_and_beta(self):
+        assert get_sibling_branches("a9") == ["a9s", "a9-beta"]
+
+    def test_a9_beta_returns_stream_and_stable(self):
+        assert get_sibling_branches("a9-beta") == ["a9s", "a9"]
+
+    def test_a8_returns_stream_and_beta(self):
+        assert get_sibling_branches("a8") == ["a8s", "a8-beta"]
+
+    def test_unrecognized_returns_empty(self):
+        assert get_sibling_branches("custom-branch") == []
+
+    def test_module_stream_branches_ignored(self):
+        assert get_sibling_branches("a9-stream-nodejs-20") == []
+        assert get_sibling_branches("a8-stream-ruby-3.1") == []
+        assert get_sibling_branches("a9-stream-php-8.2") == []
+
+
+class TestCheckoutReferenceBranch:
+
+    def test_returns_first_available_sibling(self, mocker, tmp_path):
+        branch_list = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="  remotes/origin/a10s\n  remotes/origin/a10-beta\n", stderr="",
+        )
+        mock_run = mocker.patch(
+            "src.agent_orchestrator.run_command",
+            side_effect=lambda cmd, **kw: branch_list
+            if "branch" in cmd
+            else _ok(),
+        )
+
+        result = _checkout_reference_branch(str(tmp_path), "httpd", "a10")
+        assert result == "a10s"
+        worktree_calls = [
+            c for c in mock_run.call_args_list
+            if "worktree" in c[0][0]
+        ]
+        assert len(worktree_calls) == 1
+        assert "a10s" in worktree_calls[0][0][0]
+
+    def test_falls_back_to_second_sibling(self, mocker, tmp_path):
+        """If a10s doesn't exist, fall back to a10-beta."""
+        branch_list = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="  remotes/origin/a10-beta\n", stderr="",
+        )
+        mocker.patch(
+            "src.agent_orchestrator.run_command",
+            side_effect=lambda cmd, **kw: branch_list
+            if "branch" in cmd
+            else _ok(),
+        )
+
+        result = _checkout_reference_branch(str(tmp_path), "httpd", "a10")
+        assert result == "a10-beta"
+
+    def test_a10_beta_can_use_a10_as_reference(self, mocker, tmp_path):
+        """When running for a10-beta and a10s is absent, use a10."""
+        branch_list = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="  remotes/origin/a10\n", stderr="",
+        )
+        mocker.patch(
+            "src.agent_orchestrator.run_command",
+            side_effect=lambda cmd, **kw: branch_list
+            if "branch" in cmd
+            else _ok(),
+        )
+
+        result = _checkout_reference_branch(str(tmp_path), "httpd", "a10-beta")
+        assert result == "a10"
+
+    def test_a10s_can_use_a10_as_reference(self, mocker, tmp_path):
+        branch_list = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="  remotes/origin/a10\n  remotes/origin/a10-beta\n", stderr="",
+        )
+        mocker.patch(
+            "src.agent_orchestrator.run_command",
+            side_effect=lambda cmd, **kw: branch_list
+            if "branch" in cmd
+            else _ok(),
+        )
+
+        result = _checkout_reference_branch(str(tmp_path), "httpd", "a10s")
+        assert result == "a10"
+
+    def test_returns_none_when_no_siblings_exist(self, mocker, tmp_path):
+        branch_list = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="  remotes/origin/a10\n", stderr="",
+        )
+        mocker.patch(
+            "src.agent_orchestrator.run_command",
+            return_value=branch_list,
+        )
+        result = _checkout_reference_branch(str(tmp_path), "httpd", "a10")
+        assert result is None
+
+    def test_returns_none_for_unrecognized_branch(self, mocker, tmp_path):
+        result = _checkout_reference_branch(str(tmp_path), "httpd", "custom")
+        assert result is None
+
+    def test_returns_none_when_worktree_fails(self, mocker, tmp_path):
+        branch_list = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="  remotes/origin/a10s\n", stderr="",
+        )
+
+        def side_effect(cmd, **kw):
+            if "branch" in cmd:
+                return branch_list
+            if "worktree" in cmd:
+                return _fail()
+            return _ok()
+
+        mocker.patch("src.agent_orchestrator.run_command", side_effect=side_effect)
+        result = _checkout_reference_branch(str(tmp_path), "httpd", "a10")
+        assert result is None
 
 
 class TestCheckoutBranches:
@@ -490,6 +624,8 @@ class TestRunPipeline:
                                   return_value=True)
         mocker.patch("src.agent_orchestrator._checkout_branches",
                      return_value="a9")
+        mocker.patch("src.agent_orchestrator._checkout_reference_branch",
+                     return_value=None)
         mocker.patch("src.agent_orchestrator._run_container",
                      side_effect=_fake_container(
                          {"success": True, "summary": "fixed", "analysis": "root cause"},
@@ -527,6 +663,8 @@ class TestRunPipeline:
         mocker.patch("src.agent_orchestrator._clone_repos", return_value=True)
         mocker.patch("src.agent_orchestrator._checkout_branches",
                      return_value="a9")
+        mocker.patch("src.agent_orchestrator._checkout_reference_branch",
+                     return_value=None)
         mocker.patch("src.agent_orchestrator._run_container",
                      side_effect=_fake_container())
         mock_push = mocker.patch("src.agent_orchestrator._commit_and_push",
@@ -560,6 +698,8 @@ class TestRunPipeline:
         mocker.patch("src.agent_orchestrator._clone_repos", return_value=True)
         mocker.patch("src.agent_orchestrator._checkout_branches",
                      return_value="a9")
+        mocker.patch("src.agent_orchestrator._checkout_reference_branch",
+                     return_value=None)
         mocker.patch("src.agent_orchestrator._run_container",
                      side_effect=_fake_container())
         mocker.patch("src.agent_orchestrator._commit_and_push",
@@ -600,6 +740,8 @@ class TestRunPipeline:
         mocker.patch("src.agent_orchestrator._clone_repos", return_value=True)
         mocker.patch("src.agent_orchestrator._checkout_branches",
                      return_value="a9")
+        mocker.patch("src.agent_orchestrator._checkout_reference_branch",
+                     return_value=None)
         mocker.patch("src.agent_orchestrator._run_container",
                      side_effect=_fake_container({"success": True, "summary": "analysis"}))
         mock_push = mocker.patch("src.agent_orchestrator._commit_and_push")
@@ -637,6 +779,8 @@ class TestRunPipeline:
         mocker.patch("src.agent_orchestrator._clone_repos", return_value=True)
         mocker.patch("src.agent_orchestrator._checkout_branches",
                      return_value="a9")
+        mocker.patch("src.agent_orchestrator._checkout_reference_branch",
+                     return_value=None)
         mocker.patch("src.agent_orchestrator._run_container",
                      return_value=(0, "You've hit your limit · resets 2pm (UTC)"))
         mock_log = mocker.patch("src.agent_orchestrator._write_log")

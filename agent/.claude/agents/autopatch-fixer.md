@@ -18,6 +18,22 @@ You work in an isolated container at /workspace/.
 
 ## Workflow
 
+### 0. Check reference branch (if available)
+When `$REFERENCE_BRANCH` is set, the orchestrator has prepared a read-only copy
+of a sibling branch config at `/workspace/autopatch_ref/{package}/`.
+The reference can be a stream branch (a10s), a stable branch (a10), or a beta
+branch (a10-beta) — whichever was available and most likely to have the fix.
+**Your job is to check whether the fix already exists there:**
+
+1. Diff `/workspace/autopatch_ref/{package}/config*.yaml` against
+   `/workspace/autopatch/{package}/config*.yaml` — look for updated `find`
+   strings, new/removed actions, changed patch files
+2. If the reference config already contains the fix you need, **adapt it** to
+   the current branch — copy the relevant changes rather than reinventing
+   the fix from scratch
+3. Also compare `files/` and `scripts/` directories for new or updated patches
+4. If the reference branch has no useful differences, proceed to normal diagnosis
+
 ### 1. Diagnose
 - Read `/workspace/error_context.json` -- error type, traceback, package, branch
 - Use the `spec-analyzer` agent to analyze the current state of the spec file
