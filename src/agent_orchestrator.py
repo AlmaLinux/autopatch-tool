@@ -303,11 +303,51 @@ def _ensure_remote_branch(
 GITEA_API_BASE = "https://git.almalinux.org/api/v1"
 
 
+def _format_pr_body(
+    package: str,
+    branch: str,
+    result_data: dict,
+    error_context: dict,
+) -> str:
+    """Build a detailed PR body from agent result and error context."""
+    lines = ["Automated fix by autopatch agent.", ""]
+
+    summary = result_data.get("summary", "N/A")
+    lines.append(f"**Summary:** {summary}")
+
+    analysis = result_data.get("analysis")
+    if analysis:
+        lines += ["", "### Root cause", analysis]
+
+    error_type = error_context.get("error_type")
+    traceback_str = error_context.get("traceback")
+    if error_type or traceback_str:
+        lines += ["", "### Original error"]
+        if error_type:
+            lines.append(f"**Type:** `{error_type}`")
+        if traceback_str:
+            tb = traceback_str.strip()
+            if len(tb) > 2000:
+                tb = tb[-2000:]
+            lines += ["", "```", tb, "```"]
+
+    lines += [
+        "",
+        "---",
+        f"Package: `{package}` | Webhook branch: `{branch}`",
+    ]
+
+    return "\n".join(lines)
+
+
 def _create_pull_request(
     package: str,
     branch_name: str,
     config_branch: str,
     result_data: dict,
+    *,
+    error_context: dict | None = None,
+    webhook_branch: str | None = None,
 ) -> str | None:
     """Create a pull request on Gitea via API. Returns the PR URL or None."""
     token = os.environ.get("GITEA_TOKEN")
@@ -316,9 +356,11 @@ def _create_pull_request(
         return None
 
     title = f"fix(autopatch): {result_data.get('summary', 'auto-fix')[:120]}"
-    body = (
-        f"Automated fix by autopatch agent.\n\n"
-        f"**Summary:** {result_data.get('summary', 'N/A')}\n"
+    body = _format_pr_body(
+        package,
+        webhook_branch or config_branch,
+        result_data,
+        error_context or {},
     )
 
     url = f"{GITEA_API_BASE}/repos/autopatch/{package}/pulls"
@@ -533,6 +575,8 @@ def run_pipeline(
                         actual_pr_target = config_branch
                 pr_url = _create_pull_request(
                     package, branch_name, actual_pr_target, result_data,
+                    error_context=error_context,
+                    webhook_branch=branch,
                 )
                 if not pr_url:
                     logger.warning(

@@ -14,6 +14,7 @@ from src.agent_orchestrator import (
     _commit_and_push,
     _create_pull_request,
     _ensure_remote_branch,
+    _format_pr_body,
     _run_container,
     _write_log,
     _send_slack,
@@ -243,6 +244,45 @@ class TestCommitAndPush:
         assert result is None
 
 
+class TestFormatPrBody:
+
+    def test_minimal_body(self):
+        body = _format_pr_body("httpd", "c9", {"summary": "fix"}, {})
+        assert "**Summary:** fix" in body
+        assert "Root cause" not in body
+        assert "Original error" not in body
+
+    def test_includes_analysis(self):
+        result = {
+            "summary": "Updated find string",
+            "analysis": "Upstream changed 'Requires: foo' to 'Requires: foo-libs'",
+        }
+        body = _format_pr_body("httpd", "c9", result, {})
+        assert "### Root cause" in body
+        assert "Requires: foo-libs" in body
+
+    def test_includes_error_context(self):
+        ctx = {
+            "error_type": "ReplaceActionError",
+            "traceback": "Traceback (most recent call last):\n  File ...\nValueError: x",
+        }
+        body = _format_pr_body("httpd", "c9", {"summary": "fix"}, ctx)
+        assert "### Original error" in body
+        assert "`ReplaceActionError`" in body
+        assert "ValueError: x" in body
+
+    def test_truncates_long_traceback(self):
+        ctx = {"traceback": "x" * 5000}
+        body = _format_pr_body("httpd", "c9", {"summary": "fix"}, ctx)
+        assert len(ctx["traceback"]) > 2000
+        assert "x" * 2000 in body
+
+    def test_footer_has_package_and_branch(self):
+        body = _format_pr_body("kernel", "c10s", {"summary": "fix"}, {})
+        assert "Package: `kernel`" in body
+        assert "Webhook branch: `c10s`" in body
+
+
 class TestCreatePullRequest:
 
     def test_creates_pr_on_success(self, mocker, monkeypatch):
@@ -265,6 +305,24 @@ class TestCreatePullRequest:
         assert payload["head"] == "agent-fix/a9-123"
         assert payload["base"] == "a9"
         assert "httpd" in call_kwargs[1]["json"]["title"] or "httpd" in call_kwargs[0][0]
+
+    def test_body_includes_analysis_and_error(self, mocker, monkeypatch):
+        monkeypatch.setenv("GITEA_TOKEN", "tok")
+        mock_post = mocker.patch("src.agent_orchestrator.requests.post")
+        mock_post.return_value.status_code = 201
+        mock_post.return_value.json.return_value = {"html_url": "http://x"}
+
+        _create_pull_request(
+            "kernel", "agent-fix/a10s-123", "a10s",
+            {"summary": "fix nvidia", "analysis": "Source107 conflict"},
+            error_context={"error_type": "ReplaceActionError"},
+            webhook_branch="c10s",
+        )
+
+        body = mock_post.call_args[1]["json"]["body"]
+        assert "Source107 conflict" in body
+        assert "`ReplaceActionError`" in body
+        assert "Webhook branch: `c10s`" in body
 
     def test_returns_none_without_token(self, monkeypatch):
         monkeypatch.delenv("GITEA_TOKEN", raising=False)
@@ -459,6 +517,8 @@ class TestRunPipeline:
         mock_pr.assert_called_once_with(
             "httpd", "agent-fix/a9-123", "a9",
             {"success": True, "summary": "fixed", "analysis": "root cause"},
+            error_context={"error_type": "RuntimeError", "message": "test"},
+            webhook_branch="c9",
         )
         mock_log.assert_called_once()
 
