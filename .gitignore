@@ -21,3 +21,4 @@ src/test.py
 *.egg-info/
 .venv/
 results/
+.env

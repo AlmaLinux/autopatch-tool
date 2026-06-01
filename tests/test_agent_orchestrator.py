@@ -21,7 +21,12 @@ from src.agent_orchestrator import (
     _send_slack,
     run_pipeline,
 )
-from src.tools.branch import resolve_config_branch, strip_beta, get_sibling_branches
+from src.tools.branch import (
+    resolve_config_branch,
+    resolve_upstream_branch,
+    strip_beta,
+    get_sibling_branches,
+)
 
 
 def _ok(**kwargs):
@@ -84,6 +89,25 @@ class TestResolveConfigBranch:
 
     def test_strip_beta_noop(self):
         assert strip_beta("a9") == "a9"
+
+
+class TestResolveUpstreamBranch:
+
+    def test_a9_becomes_c9(self):
+        assert resolve_upstream_branch("a9") == "c9"
+
+    def test_a9_beta_becomes_c9_beta(self):
+        assert resolve_upstream_branch("a9-beta") == "c9-beta"
+
+    def test_a10s_becomes_c10s(self):
+        assert resolve_upstream_branch("a10s") == "c10s"
+
+    def test_a8_becomes_c8(self):
+        assert resolve_upstream_branch("a8") == "c8"
+
+    def test_roundtrip_with_resolve_config_branch(self):
+        for upstream in ("c8", "c9", "c10s", "c9-beta", "c10-beta"):
+            assert resolve_upstream_branch(resolve_config_branch(upstream)) == upstream
 
 
 class TestGetSiblingBranches:
@@ -591,7 +615,18 @@ class TestSendSlack:
             dry_run=False,
             config_branch="a9",
             pr_url="https://git.almalinux.org/autopatch/httpd/pulls/42",
+            pr_blocked=None,
         )
+
+    def test_passes_pr_blocked_through(self, mocker):
+        mock_slack = mocker.patch("src.agent_orchestrator.tools_slack")
+
+        _send_slack("qemu-kvm", "c9-beta", {"success": True, "summary": "ok"},
+                    "agent-fix/a9-beta-123", False, "a9-beta",
+                    pr_url=None, pr_blocked="a9-beta")
+
+        kwargs = mock_slack.agent_result_message.call_args[1]
+        assert kwargs["pr_blocked"] == "a9-beta"
 
     def test_no_crash_when_tools_slack_missing(self, mocker):
         mocker.patch("src.agent_orchestrator.tools_slack", None)
@@ -693,8 +728,8 @@ class TestRunPipeline:
         pr_args = mock_pr.call_args[0]
         assert pr_args[2] == "a9-beta"
 
-    def test_beta_fallback_when_ensure_fails(self, mocker, tmp_path):
-        """If creating a9-beta fails, PR falls back to targeting a9."""
+    def test_no_pr_when_beta_target_cannot_be_created(self, mocker, tmp_path):
+        """If creating a9-beta fails, no PR is opened (never falls back to a9)."""
         mocker.patch("src.agent_orchestrator._clone_repos", return_value=True)
         mocker.patch("src.agent_orchestrator._checkout_branches",
                      return_value="a9")
@@ -708,8 +743,8 @@ class TestRunPipeline:
                      return_value=False)
         mock_pr = mocker.patch("src.agent_orchestrator._create_pull_request",
                                return_value=None)
-        mocker.patch("src.agent_orchestrator._write_log")
-        mocker.patch("src.agent_orchestrator._send_slack")
+        mock_log = mocker.patch("src.agent_orchestrator._write_log")
+        mock_slack = mocker.patch("src.agent_orchestrator._send_slack")
 
         run_pipeline(
             "qemu-kvm", "c9-beta",
@@ -717,9 +752,12 @@ class TestRunPipeline:
             log_path=str(tmp_path / "agent_runs.jsonl"),
         )
 
-        mock_pr.assert_called_once()
-        pr_args = mock_pr.call_args[0]
-        assert pr_args[2] == "a9"
+        # PR must NOT be opened into the stable a9 config branch.
+        mock_pr.assert_not_called()
+        # Pipeline still records the run, with no PR URL.
+        assert mock_log.call_args[0][8] is None
+        # Maintainers are told the PR was blocked on the beta target branch.
+        assert mock_slack.call_args[1]["pr_blocked"] == "a9-beta"
 
     def test_clone_failure_logs_and_returns(self, mocker, tmp_path):
         mocker.patch("src.agent_orchestrator._clone_repos", return_value=False)

@@ -30,7 +30,12 @@ WORK_DIR_TTL_SEC = 3600
 try:
     from autopatch.tools.logger import logger
     from autopatch.tools.tools import run_command
-    from autopatch.tools.branch import resolve_config_branch, strip_beta, get_sibling_branches
+    from autopatch.tools.branch import (
+        resolve_config_branch,
+        strip_beta,
+        get_sibling_branches,
+        AGENT_FIX_BRANCH_PREFIX,
+    )
     import autopatch.tools.slack as tools_slack
 except ImportError:
     import logging
@@ -42,11 +47,17 @@ except ImportError:
     except ImportError:
         run_command = None
     try:
-        from tools.branch import resolve_config_branch, strip_beta, get_sibling_branches
+        from tools.branch import (
+            resolve_config_branch,
+            strip_beta,
+            get_sibling_branches,
+            AGENT_FIX_BRANCH_PREFIX,
+        )
     except ImportError:
         resolve_config_branch = None
         strip_beta = None
         get_sibling_branches = None
+        AGENT_FIX_BRANCH_PREFIX = "agent-fix/"
     try:
         import tools.slack as tools_slack
     except ImportError:
@@ -294,7 +305,7 @@ def _commit_and_push(
 
     target = pr_target_branch or config_branch
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    branch_name = f"agent-fix/{target}-{timestamp}"
+    branch_name = f"{AGENT_FIX_BRANCH_PREFIX}{target}-{timestamp}"
 
     run_command(["git", "checkout", "-b", branch_name], cwd=autopatch_dir)
     run_command(["git", "add", "-A"], cwd=autopatch_dir)
@@ -496,8 +507,14 @@ def _send_slack(
     dry_run: bool,
     config_branch: str | None = None,
     pr_url: str | None = None,
+    pr_blocked: str | None = None,
 ) -> None:
-    """Send Slack notification via the existing tools.slack module."""
+    """Send Slack notification via the existing tools.slack module.
+
+    ``pr_blocked`` is the intended PR target branch that could not be created
+    (e.g. ``a9-beta``); when set, the message tells maintainers the fix was
+    pushed but the PR was deliberately not opened.
+    """
     if tools_slack is None:
         logger.warning("tools.slack not available, skipping notification")
         return
@@ -512,6 +529,7 @@ def _send_slack(
             dry_run=dry_run,
             config_branch=config_branch,
             pr_url=pr_url,
+            pr_blocked=pr_blocked,
         )
     except Exception as exc:
         logger.error("Slack notification failed: %s", exc)
@@ -637,6 +655,7 @@ def run_pipeline(
 
         branch_name = None
         pr_url = None
+        pr_blocked = None
         if result_data.get("success") and not is_dry_run:
             logger.info("Committing and pushing fix for %s/%s...", package, branch)
             branch_name = _commit_and_push(
@@ -645,7 +664,7 @@ def run_pipeline(
             )
             if branch_name:
                 logger.info("Pushed branch %s", branch_name)
-                actual_pr_target = pr_target_branch
+                pr_target_ready = True
                 if pr_target_branch != config_branch:
                     if _ensure_remote_branch(
                         work_dir, package, pr_target_branch, config_branch,
@@ -655,21 +674,30 @@ def run_pipeline(
                             pr_target_branch,
                         )
                     else:
-                        logger.warning(
-                            "Could not create %s, PR will target %s",
-                            pr_target_branch, config_branch,
+                        # Refuse to open the PR into the stable config branch
+                        # (e.g. a9) when the intended beta target (a9-beta)
+                        # could not be created — that would debrand the wrong
+                        # upstream content on restart. Leave the fix branch
+                        # pushed and let a human open the PR into the right base.
+                        logger.error(
+                            "Could not create PR target %s — refusing to open "
+                            "PR into %s; fix branch pushed: %s",
+                            pr_target_branch, config_branch, branch_name,
                         )
-                        actual_pr_target = config_branch
-                pr_url = _create_pull_request(
-                    package, branch_name, actual_pr_target, result_data,
-                    error_context=error_context,
-                    webhook_branch=branch,
-                )
+                        pr_target_ready = False
+                        pr_blocked = pr_target_branch
+
+                if pr_target_ready:
+                    pr_url = _create_pull_request(
+                        package, branch_name, pr_target_branch, result_data,
+                        error_context=error_context,
+                        webhook_branch=branch,
+                    )
                 if not pr_url:
                     logger.warning(
                         "PR not created — manual link: "
                         "https://git.almalinux.org/autopatch/%s/compare/%s...%s",
-                        package, actual_pr_target, branch_name,
+                        package, pr_target_branch, branch_name,
                     )
             else:
                 logger.error("Failed to push fix branch")
@@ -682,7 +710,7 @@ def run_pipeline(
         _write_log(log_path, package, branch, result_data, error_context,
                    branch_name, is_dry_run, start_ts, pr_url)
         _send_slack(package, branch, result_data, branch_name, is_dry_run,
-                    pr_target_branch, pr_url)
+                    pr_target_branch, pr_url, pr_blocked=pr_blocked)
     except Exception:
         logger.exception("Orchestrator pipeline failed")
     finally:

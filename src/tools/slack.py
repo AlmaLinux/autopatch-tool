@@ -42,9 +42,17 @@ def agent_result_message(
     dry_run: bool = False,
     config_branch: str | None = None,
     pr_url: str | None = None,
+    pr_blocked: str | None = None,
 ):
     target = config_branch or branch
-    if success and branch_name:
+    if success and branch_name and pr_blocked:
+        message = (
+            f"Agent fixed `{package}` on `{branch}` and pushed branch `{branch_name}`, "
+            f"but could NOT create the PR target branch `{pr_blocked}` — PR was not opened "
+            f"to avoid merging into the wrong branch.\n"
+            f"Please create `{pr_blocked}` and open the PR manually."
+        )
+    elif success and branch_name:
         header = f"Agent fixed `{package}` on `{branch}`, pushed branch `{branch_name}`"
         if pr_url:
             message = f"{header}\nPR: {pr_url}"

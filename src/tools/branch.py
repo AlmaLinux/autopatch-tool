@@ -6,6 +6,12 @@ webhook branches (c9, c9-beta) to autopatch config branches (a9).
 
 import re
 
+# Prefix of the branches the agent pushes for its fixes (see
+# agent_orchestrator._commit_and_push). Used to distinguish agent-generated
+# fix PRs — which trigger an automatic build restart on merge — from
+# manually-created branches/PRs, which are ignored.
+AGENT_FIX_BRANCH_PREFIX = "agent-fix/"
+
 
 def resolve_config_branch(branch: str, target_branch: str = "") -> str:
     """Map a CentOS/RHEL branch name to the AlmaLinux autopatch config branch.
@@ -20,6 +26,22 @@ def resolve_config_branch(branch: str, target_branch: str = "") -> str:
     if target_branch:
         return target_branch
     return branch.replace("c", "a", 1)
+
+
+def resolve_upstream_branch(config_branch: str) -> str:
+    """Map an AlmaLinux config branch back to its CentOS/RHEL upstream branch.
+
+    This is the inverse of :func:`resolve_config_branch`. Used when restarting
+    a build after a fix PR is merged: the webhook only tells us the config
+    branch (the PR base, e.g. ``a9-beta``), but ``apply_modifications`` needs
+    the upstream import branch to reset the rpms repo from.
+
+    Examples:
+        resolve_upstream_branch("a9")       -> "c9"
+        resolve_upstream_branch("a9-beta")  -> "c9-beta"
+        resolve_upstream_branch("a10s")     -> "c10s"
+    """
+    return config_branch.replace("a", "c", 1)
 
 
 def strip_beta(branch: str) -> str:
