@@ -237,7 +237,7 @@ def test_delete_files_action():
                 - suffix: ".mycustom.1"
                   enabled: true
             """,
-            {"modify_release": [{"suffix": ".mycustom.1", "enabled": True, "target": "spec", 'global_parameters': GlobalParameters()}]},
+            {"modify_release": [{"suffix": ".mycustom.1", "enabled": True, "auto_increment": False, "target": "spec", 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -245,7 +245,7 @@ def test_delete_files_action():
               - modify_release:
                 - suffix: ".mycustom.1"
             """,
-            {"modify_release": [{"suffix": ".mycustom.1", "enabled": True, "target": "spec", 'global_parameters': GlobalParameters()}]},
+            {"modify_release": [{"suffix": ".mycustom.1", "enabled": True, "auto_increment": False, "target": "spec", 'global_parameters': GlobalParameters()}]},
             None
         ),
         ("""
@@ -254,8 +254,26 @@ def test_delete_files_action():
                 - suffix: ".almalinux.1"
                   enabled: false
             """,
-            {"modify_release": [{"suffix": ".almalinux.1", "enabled": False, "target": "spec", 'global_parameters': GlobalParameters()}]},
+            {"modify_release": [{"suffix": ".almalinux.1", "enabled": False, "auto_increment": False, "target": "spec", 'global_parameters': GlobalParameters()}]},
             None
+        ),
+        ("""
+            actions:
+              - modify_release:
+                - suffix: ".alma.1"
+                  auto_increment: true
+            """,
+            {"modify_release": [{"suffix": ".alma.1", "enabled": True, "auto_increment": True, "target": "spec", 'global_parameters': GlobalParameters()}]},
+            None
+        ),
+        ("""
+            actions:
+              - modify_release:
+                - suffix: ".alma"
+                  auto_increment: true
+            """,
+            ValueError,
+            "must end with a number when auto_increment is enabled"
         ),
         ("""
             actions:
@@ -878,3 +896,110 @@ def test_config_reader(create_temp_config_file, config_string, expected_actions,
                 expected_keys = set(expected_entry.keys())
                 extra_keys = actual_keys - expected_keys
                 assert not extra_keys, f"Unexpected keys: {', '.join(extra_keys)}"
+
+
+BASE_TAG = "changed/a9/grub2-2.06-94.el9_4"
+
+AUTO_INCREMENT_CONFIG = """
+actions:
+  - modify_release:
+    - suffix: ".alma.1"
+      auto_increment: true
+"""
+
+STATIC_CONFIG = """
+actions:
+  - modify_release:
+    - suffix: ".alma.1"
+"""
+
+
+@pytest.mark.parametrize(
+    "config_string, base_tag, tag_prefix, existing_tags, expected_suffix",
+    [
+        # No existing tags -> falls back to the configured starting number.
+        (AUTO_INCREMENT_CONFIG, BASE_TAG, "", [], ".alma.1"),
+        # Highest existing iteration + 1.
+        (
+            AUTO_INCREMENT_CONFIG,
+            BASE_TAG,
+            "",
+            [f"{BASE_TAG}.alma.1", f"{BASE_TAG}.alma.2"],
+            ".alma.3",
+        ),
+        # Out-of-order tags still pick the maximum.
+        (
+            AUTO_INCREMENT_CONFIG,
+            BASE_TAG,
+            "",
+            [f"{BASE_TAG}.alma.5", f"{BASE_TAG}.alma.2"],
+            ".alma.6",
+        ),
+        # Tags belonging to a different version (different base_tag) are ignored.
+        (
+            AUTO_INCREMENT_CONFIG,
+            BASE_TAG,
+            "",
+            ["changed/a9/grub2-2.06-93.el9_4.alma.7", f"{BASE_TAG}.alma.2"],
+            ".alma.3",
+        ),
+        # Import tags and unrelated/non-numeric suffixes are ignored.
+        (
+            AUTO_INCREMENT_CONFIG,
+            BASE_TAG,
+            "",
+            ["imports/c9/grub2-2.06-94.el9_4", f"{BASE_TAG}.alma.beta", f"{BASE_TAG}.alma.1"],
+            ".alma.2",
+        ),
+        # tag_prefix is taken into account when matching existing tags.
+        (
+            AUTO_INCREMENT_CONFIG,
+            BASE_TAG,
+            "autopatch-",
+            [f"autopatch-{BASE_TAG}.alma.4"],
+            ".alma.5",
+        ),
+        # auto_increment disabled -> suffix untouched even if tags exist.
+        (
+            STATIC_CONFIG,
+            BASE_TAG,
+            "",
+            [f"{BASE_TAG}.alma.9"],
+            ".alma.1",
+        ),
+    ],
+)
+def test_resolve_release_iteration(
+    create_temp_config_file, config_string, base_tag, tag_prefix, existing_tags, expected_suffix
+):
+    temp_config = create_temp_config_file(config_string)
+    config_reader = ConfigReader(temp_config)
+
+    config_reader.resolve_release_iteration(
+        existing_tags=existing_tags,
+        base_tag=base_tag,
+        tag_prefix=tag_prefix,
+    )
+
+    assert config_reader.get_release_suffix() == expected_suffix
+
+
+def test_resolve_release_iteration_skips_disabled_entry(create_temp_config_file):
+    config_string = """
+actions:
+  - modify_release:
+    - suffix: ".alma.1"
+      enabled: false
+      auto_increment: true
+"""
+    temp_config = create_temp_config_file(config_string)
+    config_reader = ConfigReader(temp_config)
+
+    config_reader.resolve_release_iteration(
+        existing_tags=[f"{BASE_TAG}.alma.5"],
+        base_tag=BASE_TAG,
+        tag_prefix="",
+    )
+
+    # Disabled entries are not part of the suffix and must not be incremented.
+    assert config_reader.get_release_suffix() == ""

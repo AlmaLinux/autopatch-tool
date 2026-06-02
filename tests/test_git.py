@@ -1,4 +1,5 @@
 import re
+import textwrap
 from subprocess import run, PIPE
 import pytest
 import subprocess
@@ -6,6 +7,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from src.tools.git import GitRepository, DirectoryManager
+from src.actions_handler import ConfigReader
 
 
 @pytest.fixture
@@ -117,6 +119,118 @@ def test_create_tag_with_empty_prefix(temp_git_repo):
         check=True,
     )
     assert "v2.0.0" in result.stdout.splitlines()
+
+
+def test_list_tags_returns_all_and_filters(temp_git_repo):
+    repo = GitRepository(str(temp_git_repo), clone=False, local_repo=True)
+    tags = [
+        "changed/a9/pkg-1.0-1.el9.alma.1",
+        "changed/a9/pkg-1.0-1.el9.alma.2",
+        "imports/c9/pkg-1.0-1.el9",
+    ]
+    for tag in tags:
+        repo.create_tag(tag)
+
+    assert set(repo.list_tags()) == set(tags)
+
+    filtered = repo.list_tags("changed/a9/*")
+    assert set(filtered) == {
+        "changed/a9/pkg-1.0-1.el9.alma.1",
+        "changed/a9/pkg-1.0-1.el9.alma.2",
+    }
+
+
+def test_list_tags_empty(temp_git_repo):
+    repo = GitRepository(str(temp_git_repo), clone=False, local_repo=True)
+    assert repo.list_tags() == []
+
+
+def test_list_tags_includes_unreachable_tags(temp_git_repo):
+    # The reason list_tags uses `git tag --list` instead of `git describe` is
+    # that the autopatch flow is checked out on the upstream import branch (c9)
+    # while the `changed/*` tags live on the autopatch branch (a9), unreachable
+    # from HEAD. `git describe` would not see them; `git tag --list` must.
+    base_branch = get_current_branch(temp_git_repo)
+
+    subprocess.run(["git", "checkout", "-b", "sidebranch"], cwd=temp_git_repo, check=True)
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-m", "side commit"],
+        cwd=temp_git_repo, check=True,
+    )
+    subprocess.run(
+        ["git", "tag", "changed/a9/pkg-1.0-1.el9.alma.5"],
+        cwd=temp_git_repo, check=True,
+    )
+    subprocess.run(["git", "checkout", base_branch], cwd=temp_git_repo, check=True)
+
+    repo = GitRepository(str(temp_git_repo), clone=False, local_repo=True)
+    assert "changed/a9/pkg-1.0-1.el9.alma.5" in repo.list_tags()
+
+
+def test_auto_increment_release_drives_spec_and_tag(temp_git_repo, tmp_path):
+    """End-to-end: existing git tags drive both the bumped tag suffix and the
+    spec Release line, the way debranding.apply_modifications wires them."""
+    base_tag = "changed/a9/pkg-1.0-1.el9"
+
+    repo = GitRepository(str(temp_git_repo), clone=False, local_repo=True)
+    repo.create_tag(f"{base_tag}.alma.1")
+    repo.create_tag(f"{base_tag}.alma.2")
+    repo.create_tag("imports/c9/pkg-1.0-1.el9")  # must be ignored
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(textwrap.dedent("""
+        actions:
+          - modify_release:
+            - suffix: ".alma.1"
+              auto_increment: true
+    """))
+    config = ConfigReader(config_file)
+
+    config.resolve_release_iteration(
+        existing_tags=repo.list_tags(),
+        base_tag=base_tag,
+        tag_prefix="",
+    )
+
+    # 1) The git tag suffix is bumped to the next iteration.
+    assert config.get_release_suffix() == ".alma.3"
+    assert base_tag + config.get_release_suffix() == f"{base_tag}.alma.3"
+
+    # 2) The same suffix is applied to the spec Release line.
+    pkg_dir = tmp_path / "pkg"
+    pkg_dir.mkdir()
+    spec = pkg_dir / "pkg.spec"
+    spec.write_text(
+        "Name: pkg\nVersion: 1.0\nRelease: 1%{?dist}\n\n%description\nx\n\n%changelog\n"
+    )
+    config.apply_actions(pkg_dir)
+
+    assert "Release: 1%{?dist}.alma.3" in spec.read_text()
+
+
+def test_auto_increment_release_resets_on_new_version(temp_git_repo, tmp_path):
+    """A new upstream version (different base_tag) has no matching tags, so the
+    iteration falls back to the configured starting number."""
+    repo = GitRepository(str(temp_git_repo), clone=False, local_repo=True)
+    # Tags exist only for the OLD version.
+    repo.create_tag("changed/a9/pkg-1.0-1.el9.alma.4")
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(textwrap.dedent("""
+        actions:
+          - modify_release:
+            - suffix: ".alma.1"
+              auto_increment: true
+    """))
+    config = ConfigReader(config_file)
+
+    config.resolve_release_iteration(
+        existing_tags=repo.list_tags(),
+        base_tag="changed/a9/pkg-2.0-1.el9",  # NEW version
+        tag_prefix="",
+    )
+
+    assert config.get_release_suffix() == ".alma.1"
 
 
 def test_clone_real_repository():

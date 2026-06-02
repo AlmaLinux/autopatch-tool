@@ -487,13 +487,20 @@ class ModifyReleaseEntry(BaseEntry):
     ALLOWED_KEYS = {
         "suffix": str,
         "enabled": bool,
+        "auto_increment": bool,
     }
     REQUIRED_KEYS = {"suffix"}
 
     def __init__(self, global_parameters: GlobalParameters, **kwargs):
         super().__init__(global_parameters, **kwargs)
         self.enabled = kwargs.get("enabled", True)
+        self.auto_increment = kwargs.get("auto_increment", False)
         self.target = "spec"
+        if self.auto_increment and not re.search(r"\d+$", self.suffix):
+            raise ValueError(
+                f"modify_release suffix '{self.suffix}' must end with a number "
+                "when auto_increment is enabled"
+            )
 
 class ModifyReleaseAction(BaseAction):
     """
@@ -956,3 +963,47 @@ class ConfigReader:
                     suffixes.append(action_entry.suffix)
 
         return ''.join(suffixes)
+
+    def resolve_release_iteration(self, existing_tags, base_tag, tag_prefix=""):
+        """
+        Resolve the iteration number of auto-incrementing modify_release entries
+        against the tags that already exist in the rpms repository.
+
+        For every enabled ``modify_release`` entry that has ``auto_increment``
+        set, the trailing number of its ``suffix`` is replaced with the next
+        available iteration. The next iteration is derived from tags of the form
+        ``<tag_prefix><base_tag><stem><N>`` (e.g. ``changed/a9/<NVR>.alma.2``):
+        the highest existing ``N`` plus one, or the number configured in the
+        suffix when no such tag exists yet.
+
+        The mutated ``suffix`` is then used both for the spec ``Release`` line
+        (via :meth:`apply_actions`) and for the git tag (via
+        :meth:`get_release_suffix`), keeping the two in sync.
+        """
+        for action in self.actions:
+            if not isinstance(action, ModifyReleaseAction):
+                continue
+            for entry in action.entries:
+                if not (entry.enabled and getattr(entry, "auto_increment", False)):
+                    continue
+
+                match = re.match(r"^(?P<stem>.*?)(?P<num>\d+)$", entry.suffix)
+                stem = match.group("stem")
+                start = int(match.group("num"))
+
+                prefix = f"{tag_prefix}{base_tag}{stem}"
+                used = []
+                for tag in existing_tags:
+                    if not tag.startswith(prefix):
+                        continue
+                    rest = tag[len(prefix):]
+                    if rest.isdigit():
+                        used.append(int(rest))
+
+                iteration = max(used) + 1 if used else start
+                logger.info(
+                    f"Auto-incrementing release suffix '{entry.suffix}' -> "
+                    f"'{stem}{iteration}' (existing iterations: "
+                    f"{sorted(used) if used else 'none'})"
+                )
+                entry.suffix = f"{stem}{iteration}"
