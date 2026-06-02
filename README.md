@@ -1,233 +1,123 @@
-## Deployment Guide
+# AlmaLinux Autopatch Tool
 
-#### Prerequisites
+Autopatch automates the modifications AlmaLinux applies to
+source packages before rebuilding them: **debranding, AlmaLinux-specific patches,
+and release/changelog bookkeeping**. Instead of editing spec files by hand on
+every upstream update, each package's modifications are described once in a
+declarative `config.yaml` and applied automatically.
 
-Before deploying, ensure the following dependencies and configurations are met:
-
-- Ansible installed on the control node.
-- SSH access to the target server.
-- Required credentials stored securely in `ansible/roles/deploy/vars/main.yml`.
-- Ansible inventory file (`inventory.ini`) with the target server IP and SSH key.
-
-#### Deployment Steps
-
-##### 1. Define Required Variables
-
-Ensure the following variables are set in `ansible/roles/deploy/vars/main.yml`:
-
-```yaml
----
-# CAS credentials for notarization
-deploy_cas_signer_id: "your_signer_id"
-deploy_cas_api_key: "your_api_key"
-deploy_immudb_username: "your_username"
-deploy_immudb_password: "your_password"
-deploy_immudb_database: "your_database"
-deploy_immudb_address: "your_immudb_address"
-
-# Slack credentials to send notifications
-deploy_slack_token: "your_slack_token"
-
-# Git authentication key
-deploy_auth_key: "your_git_auth_key"
-
-# SSH keys for git.almalinux.org
-deploy_ssh_private_key: "your_private_key"
-deploy_ssh_public_key: "your_public_key"
+```
+upstream push (c9)  ──►  webhook  ──►  apply config.yaml  ──►  commit + tag + push (a9)
 ```
 
-##### 2. Configure Ansible Inventory
+## Why it exists
 
-Define the target hosts in your Ansible inventory file (e.g., `inventory.ini`):
+AlmaLinux is a downstream rebuild. Every upstream package needs the same kinds of
+mechanical changes — replace the upstream vendor's name, swap certificates, add
+patches, bump the release, write a changelog entry — repeated across hundreds of
+packages on every update. Autopatch turns those changes into version-controlled
+data and runs them automatically, verifiably, and reproducibly.
 
-```ini
-[deploy_servers]
-your-server-ip ansible_user=your_user ansible_ssh_private_key_file=your_key
-```
+## How it works (in brief)
 
-##### 3. Running the Deployment
+Autopatch operates on two git repos per package on `git.almalinux.org`:
 
-Execute the deployment playbook with:
+- **`autopatch/<pkg>`** — human-authored config repo: `config.yaml` + `files/` +
+  `scripts/`. Branches are AlmaLinux branches (`a8`, `a9`, `a10s`, …).
+- **`rpms/<pkg>`** — dist-git: the actual spec file + sources. Holds upstream
+  imports (`c8`, `c9`, …) and the AlmaLinux results (`a8`, `a9`, …).
+
+On each upstream update, Autopatch:
+
+1. maps the upstream branch to the config branch (`c9` → `a9`);
+2. resets the AlmaLinux branch to the fresh upstream import;
+3. applies the package's `config.yaml` (an ordered list of *actions*);
+4. commits (changelog lines become commit messages), tags, pushes, and notarizes.
+
+If a run fails because upstream changed, an optional AI recovery agent can analyze
+the failure and propose a fix as a pull request.
+
+## Quick start
+
+Validate a config:
 
 ```bash
-ansible-playbook -i inventory.ini main.yml
+autopatch_validate_config path/to/config.yaml
+# from a source checkout:
+python validate_config.py path/to/config.yaml
 ```
 
-##### 4. Verification
-
-After deployment, verify that the service is running properly:
+Apply a config to a local package checkout (no git):
 
 ```bash
-systemctl status almalinux-autopatch.service
+autopatch_package_patching --config config.yaml --targetdir ./mypackage
 ```
 
-## RPM packaging
+Run the full debranding workflow for a package (needs git/SSH access):
 
-A `Makefile` is provided to faciliate building both a source and binary RPM via `make srpm` or `make rpm`
-
-The `autopatch.spec` file generates a metapackage with several sub packages
-
-- Core functionality is provided by the `autopatch-core` sub package
-  - A helper script `autopatch_standalone.py` is deployed in `%{bindir}/autopatch`
-- Other features are broken out into several other sub packages (`ansible, `git`, `slack`, `web`)
-
-#### Notes
-- The dependency `python3-slackclient' is required for `autopatch-slack`, though this is not currently packaged in EPEL9
-- The dependency `python3-immudb-wrapper` is required for `autopatch-git` which is yet to be packaged (as well as the upstream python3-immudb)
-
-## Configuration File Format
-
-#### 1. actions (Main Block)
-
-##### 1.1 replace – String Replacement
-
-- **Description**: Replaces a specified strings with anothers.
-- **Fields**:
-  - `target`: Path to the file or “spec” (indicates the spec file). Glob patterns are supported.
-  - `find`: String to search for (supports multi-lines, mutually exclusive to `rfind`).
-  - `rfind`: regex string to search for (supports multi-lines, mutually exclusive to `find`).
-  - `replace`: String to replace with (supports multi-lines).
-  - `count`: Number of replacements (default is -1, which replaces all occurrences).
-
-**Example**:
-```yaml
-  - replace:
-    - target: "*.conf"
-      find: "RHEL"
-      replace: "AlmaLinux"
-      count: 1
-    - target: "spec"
-      find: |
-            %if 0%{?rhel}
-            RHEL
-      replace: |
-            %if 0%{?almalinux}
-            AlmaLinux
-    - target: "spec"
-      rfind: "Requires:.*clang.*"
-      replace: "Requires: clang = %{epoch}:%{version}-%{release}"
-      count: 1
+```bash
+autopatch -p <package> -b c9
 ```
 
-##### 1.2 delete_line – Line Deletion
+A minimal `config.yaml` (add one patch, bump release, write changelog):
 
-- **Description**: Deletes specified lines.
-- **Fields**:
-  - `target`: Path to the file or “spec”. Does not support glob patterns.
-  - `lines`:  List of lines to delete (supports multi-lines).
-
-**Example**:
 ```yaml
-  - delete_line:
-    - target: "README.md"
-      lines:
-        - "line1"
-        - |
-            hello world
-            additional line
-```
-
-##### 1.3 modify_release – Release Number Modification
-
-- **Description**: Adds a suffix to the release number.
-- **Fields**:
-  - `suffix`: Suffix to append to the release number.
-  - `enabled`: Enables or disables the modification (default is true).
-
-**Example**:
-```yaml
+actions:
   - modify_release:
-    - suffix: ".mycustom.1"
+    - suffix: ".alma.1"
       enabled: true
-```
-
-##### 1.4 changelog_entry – Adding Changelog Entries
-
-- **Description**: Adds entries to the changelog.
-- **Fields**:
-  - `name`: Author’s name.
-  - `email`: Author’s email.
-  - `line`: Lines to add to the changelog (also used as commit messages).
-
-**Example**:
-```yaml
   - changelog_entry:
-    - name: "eabdullin"
-      email: "eabdullin@almalinux.org"
+    - name: "Author Name"
+      email: "user@almalinux.org"
       line:
-        - "Updated branding to AlmaLinux"
-        - "Fixed a typo in the README"
-```
-
-##### 1.5 add_files – Adding Files
-
-- **Description**: Adds source files or patches.
-- **Fields**:
-  - `type`: File type (patch or source).
-  - `name`: File name. Should be placed in the `files` directory of the autopatch namespace repository.
-  - `number`: Patch/file number or “Latest” (default is “Latest”).
-  - `modify_spec`: Optional boolean to modify the spec file (default is true). If false, only adds the file without modifying the spec.
-  - `insert_almalinux_line`: Optional boolean to insert the AlmaLinux line in the spec file (default is true). If false, does not insert the line.
-**Example**:
-```yaml
+        - "Add fix for ..."
   - add_files:
     - type: "patch"
-      name: "my_patch.patch"
-      number: "Latest"
-      modify_spec: false
-      insert_almalinux_line: false
-    - type: "source"
-      name: "additional_source.tar.gz"
+      name: "1000-fix-description.patch"
       number: 1000
-      modify_spec: false
-      insert_almalinux_line: false
 ```
 
-##### 1.6 delete_files – Deleting Files
+## Documentation
 
-- **Description**: Deletes files from the repository.
-- **Fields**:
-  - `file_name`: File name to delete.
+| Document | What's inside |
+|----------|---------------|
+| [docs/configuration.md](docs/configuration.md) | Complete `config.yaml` reference: the `parameters` block and all eight action types, with fields, examples, ordering rules, and common patterns. |
+| [docs/writing-actions.md](docs/writing-actions.md) | Developer guide: how the action engine works and how to add a new action type, with a worked example and testing instructions. |
+| [docs/deployment.md](docs/deployment.md) | CLI tools, the webhook service, runtime environment variables, Ansible deployment, the AI agent container, and RPM packaging. |
+| [SKILL.md](SKILL.md) | Task-oriented cheat sheet for config authors (real-world debranding/patching patterns). |
+| [conf_example.yaml](conf_example.yaml) | Annotated example config. |
+| [agent/README.md](agent/README.md) | Design of the AI recovery agent (container, orchestrator, data flow). |
 
-**Example**:
-```yaml
-    - delete_files:
-      - file_name: "file1.txt"
-      - file_name: "file2"
-```
-
-##### 1.7. run_custom_scripts - Running Custom Scripts
-
-- **Description**: Executes user-defined scripts to prepare the package before performing other actions (e.g., creating symbolic links).
-- **Fields**: 
-  - `script`: script name. Should be placed in the `scripts` directory of autopatch namespace repository
-  - `cwd`: "rpms" or "autopatch" ('rpms' by default).
-
-**Example**:
-```yaml
-- run_script:
-    - script: "custom_script.sh"
-      cwd: "rpms"
+## Repository layout
 
 ```
+autopatch-tool/
+├── src/                       # core library + web service + agent host side
+│   ├── actions_handler.py     #   config parser + action engine (the core)
+│   ├── debranding.py          #   end-to-end orchestration
+│   ├── webserv.py             #   Flask webhook server
+│   └── tools/                 #   rpm, git, branch, slack, helpers
+├── agent/                     # AI recovery container (Claude Code)
+├── ansible/                   # deployment role
+├── tests/                     # pytest suite + fixture configs
+├── autopatch_standalone.py    # CLI  -> `autopatch`
+├── package_patching.py        # CLI  -> `autopatch_package_patching`
+├── validate_config.py         # CLI  -> `autopatch_validate_config`
+├── autopatch.spec, Makefile   # RPM packaging
+└── conf_example.yaml          # annotated config example
+```
 
-##### 1.8 add_line – Add a line
+## Development
 
-- **Description**: Adds a line to a section within the spec file.
-- **Fields**:
-  - `target`: Path to the “spec” (indicates the spec file).
-  - `section`: Spec file section to target (global, description, build, install, files, etc).
-  - `subpackage`: Optional name of the subpackage to target. If not set, target the main package.
-  - `location`: Location to add content ('top' or 'bottom') to the section.
-  - `content`: Actual content to add (supports multi-lines).
+```bash
+python -m pytest tests/ -v          # run the test suite
+python -m pytest tests/test_actions.py -v   # just the action engine
+```
 
-**Example**:
-```yaml
-  - add_line:
-    - target: "spec"
-      section: "install"
-      location: "bottom"
-      content: |
-              # Customized SOURCE550 installation
-              install -p -m 0644 %{SOURCE550} %{buildroot}%{_sysconfdir}/yum.repos.d/
+See [docs/writing-actions.md](docs/writing-actions.md) for how to extend the
+engine and add fixture-based tests.
+
+## License
+
+GPLv3+. See [LICENSE](LICENSE).
 ```

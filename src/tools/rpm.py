@@ -12,9 +12,9 @@ except ImportError:
     from tools.logger import logger
     from tools.tools import run_command
 
-def extract_rhel_version(branch: str) -> str:
+def extract_el_version(branch: str) -> str:
     """
-    Extract the RHEL version number from a branch name.
+    Extract the Enterprise Linux (EL) version number from a branch name.
 
     Supports branch formats like: c8, c9, c10, c8s, c10s, c8-beta,
     a8, a9, a10, a10s, etc.
@@ -27,7 +27,7 @@ def extract_rhel_version(branch: str) -> str:
     Returns
     -------
     str
-        RHEL version number (e.g. "8", "9", "10").
+        EL version number (e.g. "8", "9", "10").
 
     Raises
     ------
@@ -38,19 +38,19 @@ def extract_rhel_version(branch: str) -> str:
     if match:
         return match.group(1)
     raise ValueError(
-        f"Cannot extract RHEL version from branch '{branch}'. "
+        f"Cannot extract EL version from branch '{branch}'. "
         f"Expected format: c8, c9, c10, a8, a9, a10, etc."
     )
 
 
-def get_rpmspec_definitions(rhel_version: str = "8") -> dict:
+def get_rpmspec_definitions(el_version: str = "8") -> dict:
     """
-    Get rpmspec macro definitions for the given RHEL version.
+    Get rpmspec macro definitions for the given Enterprise Linux version.
 
     Parameters
     ----------
-    rhel_version : str
-        RHEL major version number (e.g. "8", "9", "10").
+    el_version : str
+        Enterprise Linux major version number (e.g. "8", "9", "10").
 
     Returns
     -------
@@ -64,7 +64,7 @@ def get_rpmspec_definitions(rhel_version: str = "8") -> dict:
         "gometa": "%{nil}",
         "efi_has_alt_arch": "0",
         "dist": "%{nil}",
-        "rhel": rhel_version,
+        "rhel": el_version,
     }
 
 AUTORELEASE_FINAL_LINE = '}%{?-e:.%{-e*}}%{?-s:.%{-s*}}%{!?-n:%{?dist}}'
@@ -127,7 +127,7 @@ def spec_contains_autosetup(spec: list[str]) -> bool:
 def prepare_spec_file_data_with_rpmspec(
     spec: list[str],
     spec_file_path,
-    rhel_version: str = "8"
+    el_version: str = "8"
 ) -> list[str]:
     """
     Read a spec file with updated release attribute using rpmspec utility.
@@ -137,8 +137,8 @@ def prepare_spec_file_data_with_rpmspec(
         all changelog_info of spec-file.
     spec_file_path : str or Path
         path to the spec file.
-    rhel_version : str
-        RHEL major version number (e.g. "8", "9", "10").
+    el_version : str
+        Enterprise Linux major version number (e.g. "8", "9", "10").
     Returns
     -------
     list of str
@@ -151,7 +151,7 @@ def prepare_spec_file_data_with_rpmspec(
 
         definitions = ["--define", f"_sourcedir {source_path}"]
 
-        for key, value in get_rpmspec_definitions(rhel_version).items():
+        for key, value in get_rpmspec_definitions(el_version).items():
             definitions.extend(["--define", f"{key} {value}"])
 
         with NamedTemporaryFile("w", delete=False) as tmp_file:
