@@ -31,7 +31,7 @@ class GlobalParameters:
     pre_clean: bool
     ignore_version_macros: bool
     ignore_release_macros: bool
-    rhel_version: str
+    el_version: str
 
     def __init__(self, parameters: dict = {}):
         self.insert_almalinux_line = parameters.get("insert_almalinux_line", True)
@@ -40,7 +40,10 @@ class GlobalParameters:
         self.ignore_version_macros = parameters.get("ignore_version_macros", False)
         self.ignore_release_macros = parameters.get("ignore_release_macros", False)
         self.tag_prefix = parameters.get("tag_prefix", "")
-        self.rhel_version = parameters.get("rhel_version", "8")
+        # "rhel_version" is kept as a legacy alias for "el_version".
+        self.el_version = parameters.get(
+            "el_version", parameters.get("rhel_version", "8")
+        )
 
 class ActionNotAppliedError(Exception):
     """
@@ -633,7 +636,7 @@ class ChangelogAction(BaseAction):
                     True,
                 )
             parsed_data = tools_rpm.prepare_spec_file_data_with_rpmspec(
-                spec_info, file_path, self.global_parameters.rhel_version
+                spec_info, file_path, self.global_parameters.el_version
             )
             epoch, parsed_version, parsed_release = tools_rpm.get_version_information(
                 parsed_data,
@@ -863,13 +866,13 @@ class ConfigReader:
         "add_line": AddLineAction,
     }
 
-    def __init__(self, config_source, rhel_version: str = "8"):
+    def __init__(self, config_source, el_version: str = "8"):
         if isinstance(config_source, (str, bytes, Path)):
             self.config_source = Path(config_source)
         else:
             self.config_source = config_source
         self.actions = []
-        self.rhel_version = rhel_version
+        self.el_version = el_version
         self.global_parameters = GlobalParameters()
         self._read_config()
 
@@ -907,7 +910,10 @@ class ConfigReader:
 
         actions_data = config_data.get("actions")
         parameters = config_data.get("parameters", {})
-        parameters.setdefault("rhel_version", self.rhel_version)
+        # Backwards compat: accept the legacy "rhel_version" key as "el_version".
+        if "el_version" not in parameters and "rhel_version" in parameters:
+            parameters["el_version"] = parameters.pop("rhel_version")
+        parameters.setdefault("el_version", self.el_version)
         self.global_parameters = GlobalParameters(parameters)
 
         for action_data in actions_data:

@@ -1,6 +1,6 @@
 # AlmaLinux Autopatch Config Format
 
-Autopatch automates modifications to CentOS/RHEL source packages for AlmaLinux rebuilds. Each package gets a git repo under the `autopatch` namespace with a `config.yaml` that declares spec changes, patches, and branding. The corresponding RPM dist-git sources live under `rpms`.
+Autopatch automates modifications to upstream Enterprise Linux source packages for AlmaLinux rebuilds. Each package gets a git repo under the `autopatch` namespace with a `config.yaml` that declares spec changes, patches, and branding. The corresponding RPM dist-git sources live under `rpms`.
 
 ## Repository Layout
 
@@ -42,7 +42,7 @@ String replacement in spec or source files. Supports glob patterns in `target`. 
 ```yaml
   - replace:
     - target: "spec"
-      find: "Red Hat Enterprise Linux"
+      find: "Upstream Vendor Linux"      # the upstream distribution's product name
       replace: "AlmaLinux"
       count: 2
     - target: "spec"
