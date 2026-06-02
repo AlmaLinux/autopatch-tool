@@ -230,6 +230,22 @@ class GitRepository:
         with DirectoryManager(self.name):
             return run_command(["git", "describe", "--tags", "--abbrev=0"]).stdout.strip()
 
+    def list_tags(self, pattern: str = "") -> list[str]:
+        """
+        List local tags, optionally filtered by a glob pattern.
+
+        Unlike :meth:`get_latest_tag`, this lists tags regardless of whether
+        they are reachable from the current branch, which is required to find
+        ``changed/*`` tags (created on the autopatch branch) while checked out
+        on the upstream import branch.
+        """
+        with DirectoryManager(self.name):
+            command = ["git", "tag", "--list"]
+            if pattern:
+                command.append(pattern)
+            result = run_command(command)
+            return [tag.strip() for tag in result.stdout.splitlines() if tag.strip()]
+
 
 class GitAlmaLinux:
     """

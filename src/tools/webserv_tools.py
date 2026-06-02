@@ -66,3 +66,17 @@ def get_tag_from_payload(
     if 'ref' in payload and 'ref_type' in payload and "tag" == payload['ref_type']:
         return payload['ref']
     return ''
+
+def get_pushed_branch(
+    payload: Dict[str, Any]
+) -> str:
+    """Extract the pushed branch name from a Gitea *push* webhook payload.
+
+    Returns the branch for ``refs/heads/<branch>`` pushes (e.g. ``a9-beta``),
+    and '' for tag pushes (``refs/tags/...``) or malformed payloads.
+    """
+    prefix = 'refs/heads/'
+    ref = payload.get('ref', '')
+    if ref.startswith(prefix):
+        return ref[len(prefix):]
+    return ''

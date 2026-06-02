@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import pytest
 from freezegun import freeze_time
 
 from src.agent_orchestrator import (
@@ -26,6 +27,7 @@ from src.tools.branch import (
     resolve_upstream_branch,
     strip_beta,
     get_sibling_branches,
+    is_config_branch,
 )
 
 
@@ -105,8 +107,12 @@ class TestResolveUpstreamBranch:
     def test_a8_becomes_c8(self):
         assert resolve_upstream_branch("a8") == "c8"
 
+    def test_stream_branch_maps_to_upstream(self):
+        assert resolve_upstream_branch("a9-stream-nodejs-18") == "c9-stream-nodejs-18"
+
     def test_roundtrip_with_resolve_config_branch(self):
-        for upstream in ("c8", "c9", "c10s", "c9-beta", "c10-beta"):
+        for upstream in ("c8", "c9", "c10s", "c9-beta", "c10-beta",
+                         "c9-stream-nodejs-18"):
             assert resolve_upstream_branch(resolve_config_branch(upstream)) == upstream
 
 
@@ -129,6 +135,35 @@ class TestGetSiblingBranches:
 
     def test_a8_returns_stream_and_beta(self):
         assert get_sibling_branches("a8") == ["a8s", "a8-beta"]
+
+
+class TestIsConfigBranch:
+
+    @pytest.mark.parametrize("branch", [
+        "a8", "a9", "a9s", "a9-beta", "a9s-beta", "a10", "a10s", "a10-beta",
+        # modular / stream branches
+        "a9-stream", "a9-stream-nodejs-18", "a8s-stream-virt-rhel",
+        "a9-stream-php-8.1",
+    ])
+    def test_accepts_config_branches(self, branch):
+        assert is_config_branch(branch) is True
+
+    @pytest.mark.parametrize("branch", [
+        "c9",                            # upstream import branch
+        "c9-beta",
+        "c9-stream-nodejs-18",           # upstream module branch
+        "agent-fix/a9-beta-20260601",    # agent working branch
+        "feature/manual",
+        "main",
+        "a",                             # no version number
+        "abc",
+        "a9-streaming",                  # not a real -stream branch
+        "a9-stream-",                    # trailing separator
+        "",
+        "9",
+    ])
+    def test_rejects_non_config_branches(self, branch):
+        assert is_config_branch(branch) is False
 
     def test_unrecognized_returns_empty(self):
         assert get_sibling_branches("custom-branch") == []
