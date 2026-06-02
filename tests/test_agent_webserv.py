@@ -54,13 +54,8 @@ VALID_PAYLOAD = {
     "ref": "refs/heads/c9",
 }
 
-PR_MERGED_PAYLOAD = {
-    "action": "closed",
-    "pull_request": {
-        "merged": True,
-        "base": {"ref": "a9-beta"},
-        "head": {"ref": "agent-fix/a9-beta-20260601-101500"},
-    },
+CONFIG_PUSH_PAYLOAD = {
+    "ref": "refs/heads/a9-beta",
     "repository": {"name": "qemu-kvm"},
 }
 
@@ -90,8 +85,8 @@ def _post(client, payload=None):
         return None
 
 
-def _post_pr(client, payload):
-    """Send a PR-merged webhook with a valid Gitea HMAC signature."""
+def _post_config_push(client, payload):
+    """Send a config-pushed webhook with a valid Gitea HMAC signature."""
     body = json.dumps(payload).encode()
     sig = hmac.new(
         key=AUTH_KEY.encode(),
@@ -99,7 +94,7 @@ def _post_pr(client, payload):
         digestmod="SHA256",
     ).hexdigest()
     return client.post(
-        "/autopatch_pr_merged",
+        "/autopatch_config_pushed",
         data=body,
         content_type="application/json",
         headers={"X-Gitea-Signature": sig},
@@ -176,57 +171,57 @@ class TestAgentIntegration:
         # the agent crash was properly caught.
 
 
-class TestPrMergedRestart:
+class TestConfigPushRestart:
 
-    def test_restart_on_agent_fix_merge(self, client, mocker):
+    def test_restart_on_config_branch_push(self, client, mocker):
         mod = _webserv_mod(client)
         mock_apply = mocker.patch.object(
             mod, "apply_modifications", return_value=mod.SUCCESS,
         )
         mock_success = mocker.patch.object(mod.tools_slack, "success_message")
 
-        resp = _post_pr(client, PR_MERGED_PAYLOAD)
+        resp = _post_config_push(client, CONFIG_PUSH_PAYLOAD)
 
         assert resp.status_code == 200
-        # upstream branch reconstructed from base.ref (a9-beta -> c9-beta),
-        # config branch passed through as target_branch.
+        # upstream branch reconstructed from the pushed config branch
+        # (a9-beta -> c9-beta), config branch passed through as target_branch.
         mock_apply.assert_called_once_with(
             "qemu-kvm", "c9-beta", target_branch="a9-beta",
         )
         mock_success.assert_called_once_with("qemu-kvm", "a9-beta")
 
-    def test_ignored_when_not_merged(self, client, mocker):
+    def test_ignored_when_branch_deleted(self, client, mocker):
         mod = _webserv_mod(client)
         mock_apply = mocker.patch.object(mod, "apply_modifications")
-        payload = dict(PR_MERGED_PAYLOAD)
-        payload["pull_request"] = {
-            **PR_MERGED_PAYLOAD["pull_request"], "merged": False,
-        }
+        payload = {**CONFIG_PUSH_PAYLOAD, "deleted": True}
 
-        resp = _post_pr(client, payload)
+        resp = _post_config_push(client, payload)
 
         assert resp.status_code == 200
         mock_apply.assert_not_called()
 
-    def test_ignored_when_not_a_close_event(self, client, mocker):
+    def test_ignored_when_tag_push(self, client, mocker):
         mod = _webserv_mod(client)
         mock_apply = mocker.patch.object(mod, "apply_modifications")
-        payload = {**PR_MERGED_PAYLOAD, "action": "opened"}
+        payload = {**CONFIG_PUSH_PAYLOAD, "ref": "refs/tags/changed/a9/x-1.0"}
 
-        _post_pr(client, payload)
+        resp = _post_config_push(client, payload)
 
+        assert resp.status_code == 200
         mock_apply.assert_not_called()
 
-    def test_ignored_when_manual_branch(self, client, mocker):
-        """A PR from a manually-created (non agent-fix) branch is ignored."""
+    def test_ignored_for_non_config_branches(self, client, mocker):
+        """Upstream import, agent-fix and feature branches are ignored."""
         mod = _webserv_mod(client)
         mock_apply = mocker.patch.object(mod, "apply_modifications")
-        for head in ("feature/manual", "a9-beta", "fix/typo", "agentfix/oops"):
-            payload = dict(PR_MERGED_PAYLOAD)
-            payload["pull_request"] = {
-                **PR_MERGED_PAYLOAD["pull_request"], "head": {"ref": head},
-            }
-            resp = _post_pr(client, payload)
+        for branch in (
+            "c9",                              # upstream import branch
+            "agent-fix/a9-beta-20260601",      # agent working branch
+            "feature/manual",                  # feature branch
+            "main",
+        ):
+            payload = {**CONFIG_PUSH_PAYLOAD, "ref": f"refs/heads/{branch}"}
+            resp = _post_config_push(client, payload)
             assert resp.status_code == 200
 
         mock_apply.assert_not_called()
@@ -238,7 +233,7 @@ class TestPrMergedRestart:
         )
         mock_failed = mocker.patch.object(mod.tools_slack, "failed_message")
 
-        resp = _post_pr(client, PR_MERGED_PAYLOAD)
+        resp = _post_config_push(client, CONFIG_PUSH_PAYLOAD)
 
         assert resp.status_code == 200
         mock_failed.assert_called_once()

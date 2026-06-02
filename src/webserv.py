@@ -21,10 +21,11 @@ try:
         jsonify_response,
         get_name_from_payload,
         get_branch_from_payload,
+        get_pushed_branch,
     )
     from autopatch.tools.branch import (
         resolve_upstream_branch,
-        AGENT_FIX_BRANCH_PREFIX,
+        is_config_branch,
     )
     import autopatch.tools.slack as tools_slack
 except ImportError:
@@ -38,10 +39,11 @@ except ImportError:
         jsonify_response,
         get_name_from_payload,
         get_branch_from_payload,
+        get_pushed_branch,
     )
     from tools.branch import (
         resolve_upstream_branch,
-        AGENT_FIX_BRANCH_PREFIX,
+        is_config_branch,
     )
     import tools.slack as tools_slack
 
@@ -117,17 +119,23 @@ def debrand_packages():
 
 
 @app.route(
-    '/autopatch_pr_merged',
+    '/autopatch_config_pushed',
     methods=('POST',),
 )
 @auth_key_required
-def autopatch_pr_merged():
-    """Restart debranding for a package once its fix PR is merged.
+def autopatch_config_pushed():
+    """Restart debranding when a config branch is pushed in the autopatch namespace.
 
-    Triggered by a Gitea *Pull Request* webhook on the autopatch namespace.
-    When an agent-fix PR is merged into a config branch (e.g. a9-beta), we
-    re-run the debranding for that package so the build is produced again —
-    without waiting for the next upstream push.
+    Triggered by a Gitea *push* webhook on the autopatch namespace. Any change
+    to a config branch (a9, a9-beta, a10s, ...) re-runs the debranding so the
+    rpms repo is rebuilt immediately, without waiting for the next upstream
+    push. This covers both manual config edits and merged agent-fix PRs (a
+    merge is itself a push to the base branch), which is why the dedicated
+    ``/autopatch_pr_merged`` endpoint is no longer needed.
+
+    Non-config branches are intentionally ignored: this is what keeps the
+    agent's ``agent-fix/*`` working branches from triggering a rebuild before
+    their PR is merged.
     """
     package = ''
     config_branch = ''
@@ -135,47 +143,38 @@ def autopatch_pr_merged():
         payload = request.json
         logger.debug(json.dumps(payload, indent=4))
 
-        if payload.get('action') != 'closed':
+        # A branch deletion is delivered as a push with deleted=true; nothing
+        # to rebuild in that case.
+        if payload.get('deleted'):
             return jsonify_response(
                 result={
-                    'message': 'Nothing to restart, PR event is not a close',
-                    'details': f"action - {payload.get('action')}",
-                },
-                status_code=HTTP_200_OK,
-                success=False,
-            )
-
-        pull_request = payload.get('pull_request') or {}
-        if not pull_request.get('merged'):
-            return jsonify_response(
-                result={
-                    'message': 'Nothing to restart, PR was closed without merge',
+                    'message': 'Nothing to rebuild, branch was deleted',
                 },
                 status_code=HTTP_200_OK,
                 success=False,
             )
 
         package = get_name_from_payload(payload)
-        config_branch = (pull_request.get('base') or {}).get('ref', '')
-        head_ref = (pull_request.get('head') or {}).get('ref', '')
+        config_branch = get_pushed_branch(payload)
 
         if not package or not config_branch:
             return jsonify_response(
                 result={
-                    'message': 'Nothing to restart, package or base branch are absent in payload',
-                    'details': f"package - {package}, base branch - {config_branch}",
+                    'message': 'Nothing to rebuild, package or branch are absent in payload',
+                    'details': f"package - {package}, branch - {config_branch}",
                 },
                 status_code=HTTP_200_OK,
                 success=False,
             )
 
-        # Restart only for agent-generated fix branches. PRs from
-        # manually-created branches are intentionally ignored.
-        if not head_ref.startswith(AGENT_FIX_BRANCH_PREFIX):
+        # Rebuild only for real config branches (a9, a9-beta, a10s, ...). This
+        # ignores upstream import branches (c9), the agent's agent-fix/* working
+        # branches and any other feature branches.
+        if not is_config_branch(config_branch):
             return jsonify_response(
                 result={
-                    'message': 'Nothing to restart, not an agent-fix PR',
-                    'details': f"head branch - {head_ref}",
+                    'message': 'Nothing to rebuild, not an autopatch config branch',
+                    'details': f"branch - {config_branch}",
                 },
                 status_code=HTTP_200_OK,
                 success=False,
@@ -183,7 +182,7 @@ def autopatch_pr_merged():
 
         upstream_branch = resolve_upstream_branch(config_branch)
         logger.info(
-            "PR merged for %s into %s, restarting debranding from upstream %s",
+            "Config pushed for %s on %s, restarting debranding from upstream %s",
             package, config_branch, upstream_branch,
         )
 

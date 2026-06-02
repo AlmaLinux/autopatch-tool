@@ -46,6 +46,7 @@ test-docker:
 		'RUN git config --global user.name "eabdullin"' \
 		'ENV PYTHONUNBUFFERED=1' \
 		'ENV PYTHONPATH="./src:./"' \
+		'ENV ALLOW_NOTARIZATION=false' \
 		'CMD ["sh", "-c", "pytest tests"]' \
 		> Dockerfile.test
 	@echo "Building Docker image: $(IMAGE_NAME)"
