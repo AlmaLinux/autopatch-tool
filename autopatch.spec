@@ -1,5 +1,3 @@
-%bcond_with agent
-
 Name:           autopatch
 Version:        1.1.3
 Release:        1%{?dist}
@@ -39,6 +37,9 @@ A tool to automatically patch upstream content for use downstream
 %{python3_sitelib}/package_patching.py
 %{python3_sitelib}/__pycache__/package_patching.cpython*
 %{_bindir}/autopatch_package_patching
+# branch
+%{python3_sitelib}/%{name}/tools/branch.py
+%{python3_sitelib}/%{name}/tools/__pycache__/branch.cpython*.pyc
 # slack
 %{python3_sitelib}/%{name}/tools/slack.py
 %{python3_sitelib}/%{name}/tools/__pycache__/slack.cpython*.pyc
@@ -78,24 +79,6 @@ Core components of the autopatch tool
 %{python3_sitelib}/%{name}/tools/__pycache__/tools.cpython*.pyc
 %{_bindir}/autopatch
 %{_bindir}/autopatch_validate_config
-
-%if %{with agent}
-%package agent
-Summary:        AI agent integration for autopatch
-Requires:       %{name} = %{version}-%{release}
-Requires:       podman
-
-%description agent
-AI agent (Claude Code) integration for automatic autopatch config recovery.
-Runs in an isolated Podman container (rootless) when autopatch fails.
-
-%files agent
-%{python3_sitelib}/%{name}/agent_handler.py
-%{python3_sitelib}/%{name}/agent_orchestrator.py
-%{python3_sitelib}/%{name}/__pycache__/agent_handler.cpython*.pyc
-%{python3_sitelib}/%{name}/__pycache__/agent_orchestrator.cpython*.pyc
-%{_datadir}/%{name}/agent/
-%endif
 
 %changelog
 * Mon Oct 20 2025 Eduard Abdullin <eabdullin@almalinux.org> - 1.1.2-1
