@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import yaml
 from slack_sdk.web import WebClient
@@ -26,6 +28,43 @@ def failed_message(package_name:str, branch: str, error: str):
 
 def success_message(package_name:str, branch: str):
     message = f"Successfully debranded package `{package_name}` on branch `{branch}`\n"
+    client.chat_postMessage(
+        channel=CHAT_NAME,
+        text=message
+    )
+
+def agent_result_message(
+    package: str,
+    branch: str,
+    success: bool,
+    summary: str,
+    branch_name: str | None = None,
+    dry_run: bool = False,
+    config_branch: str | None = None,
+    pr_url: str | None = None,
+    pr_blocked: str | None = None,
+):
+    target = config_branch or branch
+    if success and branch_name and pr_blocked:
+        message = (
+            f"Agent fixed `{package}` on `{branch}` and pushed branch `{branch_name}`, "
+            f"but could NOT create the PR target branch `{pr_blocked}` — PR was not opened "
+            f"to avoid merging into the wrong branch.\n"
+            f"Please create `{pr_blocked}` and open the PR manually."
+        )
+    elif success and branch_name:
+        header = f"Agent fixed `{package}` on `{branch}`, pushed branch `{branch_name}`"
+        if pr_url:
+            message = f"{header}\nPR: {pr_url}"
+        else:
+            message = (
+                f"{header}\n"
+                f"Create PR: https://git.almalinux.org/autopatch/{package}/compare/{target}...{branch_name}"
+            )
+    elif dry_run:
+        message = f"Agent dry-run for `{package}` on `{branch}`: {summary}"
+    else:
+        message = f"Agent failed to fix `{package}` on `{branch}`: {summary}"
     client.chat_postMessage(
         channel=CHAT_NAME,
         text=message

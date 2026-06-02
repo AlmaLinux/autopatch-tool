@@ -6,3 +6,5 @@
     - "../../src"
     - "../../package_patching.py"
     - "../../validate_config.py"
+    - "../../autopatch_standalone.py"
+    - "../../setup.py"

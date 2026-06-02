@@ -6,6 +6,14 @@ After=network-online.target
 [Service]
 Environment="HOME={{ deploy_home_directory }}"
 Environment="AUTH_KEY={{ deploy_auth_key }}"
+{% if deploy_agent_enabled %}
+Environment="AGENT_ENABLED=true"
+Environment="AGENT_DRY_RUN={{ deploy_agent_dry_run | lower }}"
+Environment="AGENT_IMAGE={{ deploy_agent_image }}"
+Environment="AGENT_AUTH_VOLUME={{ deploy_agent_auth_volume }}"
+Environment="AGENT_TIMEOUT={{ deploy_agent_timeout }}"
+Environment="GITEA_TOKEN={{ gitea_token }}"
+{% endif %}
 Type=simple
 WorkingDirectory={{ deploy_source_path }}/src
 ExecStart=/usr/local/bin/gunicorn -w 2 --timeout 240 -b "0.0.0.0:{{ deploy_gunicorn_port }}" webserv:app

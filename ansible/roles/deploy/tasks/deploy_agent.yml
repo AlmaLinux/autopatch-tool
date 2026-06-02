@@ -1,0 +1,47 @@
+---
+- name: Create agent log directory
+  file:
+    path: /var/log/autopatch
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copy agent directory to host
+  synchronize:
+    src: "../../agent"
+    dest: "{{ deploy_source_path }}"
+
+- name: Build agent container image
+  command: >
+    podman build
+    -t {{ deploy_agent_image }}
+    -f {{ deploy_source_path }}/agent/Containerfile
+    {{ deploy_source_path }}
+  register: agent_build
+  changed_when: "'COMMIT' in agent_build.stdout"
+
+- name: Create Podman volume for Claude Code auth
+  command: podman volume create {{ deploy_agent_auth_volume }}
+  register: volume_create
+  changed_when: volume_create.rc == 0
+  failed_when: false
+
+- name: Check if Claude Code is authenticated
+  command: >
+    podman run --rm
+    --entrypoint test
+    -v {{ deploy_agent_auth_volume }}:/home/agent/.claude
+    {{ deploy_agent_image }}
+    -s /home/agent/.claude/.credentials.json
+  register: auth_check
+  changed_when: false
+  failed_when: false
+
+- name: Warn if Claude Code auth is missing
+  debug:
+    msg: >
+      Claude Code is NOT authenticated. Run manually on the server:
+      podman run -it -v {{ deploy_agent_auth_volume }}:/home/agent/.claude
+      --entrypoint claude {{ deploy_agent_image }} login
+  when: auth_check.rc != 0

@@ -347,6 +347,8 @@ def get_patch_directive_type(line: str) -> PatchDirectiveType:
         return PatchDirectiveType.UPPER_P_W_SPACE
     if re.match(r"^%patch\s+-P[0-9]{1,5}", line):
         return PatchDirectiveType.UPPER_P_N_SPACE
+    if re.match(r"^%patch\s+-P\s+-p", line):
+        return PatchDirectiveType.UPPER_P_W_SPACE
     if re.match(r"^(ApplyOptionalPatch|ApplyPatch)", line):
         return PatchDirectiveType.KERNEL
     return None

@@ -1,0 +1,19 @@
+actions:
+  - modify_release:
+    - suffix: ".alma.1"
+      enabled: true
+
+  - changelog_entry:
+      - name: "Andrew Lukoshko"
+        email: "alukoshko@almalinux.org"
+        line:
+          - "Add first AlmaLinux patch"
+          - "Add second AlmaLinux patch"
+
+  - add_files:
+      - type: "patch"
+        name: "1000-first-almalinux.patch"
+        number: 1000
+      - type: "patch"
+        name: "1001-second-almalinux.patch"
+        number: 1001

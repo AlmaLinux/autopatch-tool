@@ -8,5 +8,9 @@
 - name: Deploy files
   include_tasks: deploy_files.yml
 
+- name: Deploy agent
+  include_tasks: deploy_agent.yml
+  when: deploy_agent_enabled | bool
+
 - name: Deploy systemd service
   include_tasks: systemd_service.yml

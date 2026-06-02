@@ -5,8 +5,14 @@ SPECFILE_RELEASE    = $(shell awk '$$1 == "Release:"  { print $$2 }' $(SPECFILE)
 TARFILE             = $(SPECFILE_NAME)-$(SPECFILE_VERSION).tar.gz
 DIST               ?= $(shell rpm --eval %{dist})
 
+# Agent components are deployed from source (Ansible/gunicorn), never packaged
+# in the RPM, so they are excluded from the build tarball.
 sources:
-	tar -zcf $(TARFILE) --exclude-vcs --transform 's,^,$(SPECFILE_NAME)-$(SPECFILE_VERSION)/,' ansible src tests LICENSE README.md conf_example.yaml *py
+	tar -zcf $(TARFILE) --exclude-vcs \
+		--exclude='src/agent_handler.py' \
+		--exclude='src/agent_orchestrator.py' \
+		--exclude='src/__pycache__/agent_*' \
+		--transform 's,^,$(SPECFILE_NAME)-$(SPECFILE_VERSION)/,' ansible src tests LICENSE README.md conf_example.yaml *py
 
 clean:
 	rm -rf build/ $(TARFILE)
