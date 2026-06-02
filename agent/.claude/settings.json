@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(autopatch_validate_config*)",
+      "Bash(autopatch *)",
+      "Bash(grep *)",
+      "Bash(diff *)",
+      "Bash(cat *)",
+      "Bash(ls *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(sudo *)",
+      "Bash(git push*)",
+      "Bash(git remote*)",
+      "Bash(curl *)"
+    ]
+  }
+}

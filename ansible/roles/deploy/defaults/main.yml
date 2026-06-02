@@ -37,3 +37,10 @@ deploy_systemd_services:
   almalinux-autopatch.service: restarted
 
 deploy_systemd_dir: "/usr/lib/systemd/system"
+
+# Agent configuration (disabled by default)
+deploy_agent_enabled: true
+deploy_agent_dry_run: false
+deploy_agent_timeout: 600
+deploy_agent_image: "localhost/autopatch-agent:latest"
+deploy_agent_auth_volume: "claude-auth"

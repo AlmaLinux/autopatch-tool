@@ -37,6 +37,9 @@ A tool to automatically patch upstream content for use downstream
 %{python3_sitelib}/package_patching.py
 %{python3_sitelib}/__pycache__/package_patching.cpython*
 %{_bindir}/autopatch_package_patching
+# branch
+%{python3_sitelib}/%{name}/tools/branch.py
+%{python3_sitelib}/%{name}/tools/__pycache__/branch.cpython*.pyc
 # slack
 %{python3_sitelib}/%{name}/tools/slack.py
 %{python3_sitelib}/%{name}/tools/__pycache__/slack.cpython*.pyc

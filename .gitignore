@@ -18,3 +18,7 @@ requirements.txt
 src/test.py
 .cursor/plans
 .ansible
+*.egg-info/
+.venv/
+results/
+.env

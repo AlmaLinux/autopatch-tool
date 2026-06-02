@@ -1,0 +1,26 @@
+---
+description: No code duplication — always reuse existing functions
+alwaysApply: true
+---
+
+# No Code Duplication
+
+NEVER duplicate logic that already exists in the codebase. Before writing a new function:
+
+1. **Search first**: check if the logic already exists somewhere
+2. **Extract if inline**: if it exists but is inline in another function, extract it into a shared utility in `src/tools/` and use it from both places
+3. **Import and reuse**: if a function already exists, import it — do not copy-paste or reimplement
+
+```python
+# BAD — duplicating branch mapping that already exists in debranding.py
+def _resolve_config_branch(branch):
+    return branch.replace("c", "a", 1)
+
+# GOOD — extract shared logic into tools/, use from both places
+# src/tools/branch.py
+def resolve_config_branch(branch):
+    return branch.replace("c", "a", 1)
+
+# Then import in debranding.py AND agent_orchestrator.py
+from autopatch.tools.branch import resolve_config_branch
+```
