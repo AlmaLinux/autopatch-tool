@@ -36,6 +36,11 @@ actions:
   - modify_release:
     - suffix: ".alma.1" # append the suffix to the release
       enabled: true # (is "true" by default)
+      # auto_increment (default false): treat the trailing number of "suffix"
+      # as a starting value and bump it automatically based on existing git
+      # tags. For the same upstream version, ".alma.1" becomes ".alma.2",
+      # ".alma.3", ... When the upstream version changes, the count resets.
+      auto_increment: false
 
   # changelog_entry - adding entries to the changelog for the spec file.
   - changelog_entry:

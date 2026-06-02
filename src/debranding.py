@@ -96,6 +96,15 @@ def apply_modifications(
                     f"changed/{_al_branch}",
                     1
                 )
+                # Resolve auto-incrementing release suffixes (.alma.N) against
+                # tags already present in the repo. Must run before both the tag
+                # is built below and apply_actions() rewrites the spec Release,
+                # so the spec and the tag share the same iteration number.
+                config.resolve_release_iteration(
+                    existing_tags=git_repo.list_tags(),
+                    base_tag=base_tag,
+                    tag_prefix=config.global_parameters.tag_prefix,
+                )
                 tag = base_tag + config.get_release_suffix()
             else:
                 tag = set_custom_tag

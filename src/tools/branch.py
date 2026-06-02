@@ -12,6 +12,14 @@ import re
 # manually-created branches/PRs, which are ignored.
 AGENT_FIX_BRANCH_PREFIX = "agent-fix/"
 
+# An AlmaLinux autopatch config branch: a8, a9, a9s, a9-beta, a10s, and
+# modular/stream branches such as a9-stream, a9-stream-nodejs-18,
+# a8s-stream-virt-rhel.
+# Used to decide whether a push to the autopatch namespace should trigger a
+# rebuild. Deliberately rejects upstream import branches (c9), agent working
+# branches (agent-fix/*) and any other feature branches.
+_CONFIG_BRANCH_RE = re.compile(r"^a\d+s?(-beta|-stream(-[\w.+]+)*)?$")
+
 
 def resolve_config_branch(branch: str, target_branch: str = "") -> str:
     """Map a CentOS/RHEL branch name to the AlmaLinux autopatch config branch.
@@ -54,6 +62,27 @@ def strip_beta(branch: str) -> str:
         strip_beta("a9")      -> "a9"
     """
     return branch.replace("-beta", "")
+
+
+def is_config_branch(branch: str) -> bool:
+    """True if ``branch`` is an AlmaLinux autopatch config branch.
+
+    Matches the modified-branch convention (a8, a9, a9s, a9-beta, a10s, ...)
+    including modular/stream branches (a9-stream, a9-stream-nodejs-18), and
+    deliberately rejects upstream import branches (c9), agent working
+    branches (``agent-fix/*``) and any other feature branches. Used by the
+    push-triggered rebuild endpoint to ignore everything that is not a real
+    config branch.
+
+    Examples:
+        is_config_branch("a9")                 -> True
+        is_config_branch("a9-beta")            -> True
+        is_config_branch("a10s")               -> True
+        is_config_branch("a9-stream-nodejs-18") -> True
+        is_config_branch("c9")                 -> False
+        is_config_branch("agent-fix/a9-beta-...") -> False
+    """
+    return bool(_CONFIG_BRANCH_RE.match(branch))
 
 
 def get_sibling_branches(config_branch: str) -> list[str]:

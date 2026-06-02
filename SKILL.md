@@ -42,6 +42,14 @@ Appends a suffix to the RPM Release tag. Preferred over `replace` for release ch
 
 Increment the number (`.alma.2`, `.alma.3`) when making additional changes to the same upstream version.
 
+Set `auto_increment: true` to bump the trailing number automatically instead of editing the config by hand. The next iteration is derived from the git tags already present in the rpms repo (`changed/<branch>/<NVR>.alma.<N>`): the suffix becomes the highest existing `N` plus one, falling back to the number written in `suffix` when none exists. The count resets automatically when the upstream version changes (a different tag base). The trailing number in `suffix` must be present and acts as the starting value.
+
+```yaml
+  - modify_release:
+    - suffix: ".alma.1"   # trailing number is the starting value
+      auto_increment: true
+```
+
 ### replace
 
 String replacement in spec or source files. Supports glob patterns in `target`. Use `find` for literal strings, `rfind` for regex.

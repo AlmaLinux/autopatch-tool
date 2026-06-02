@@ -58,6 +58,7 @@ def get_rpmspec_definitions(el_version: str = "8") -> dict:
         Dictionary of macro definitions for rpmspec.
     """
     return {
+        "__python": "/usr/bin/python3",
         "__python3": "/usr/bin/python3",
         "ldconfig_scriptlets(n:)": "%{nil}",
         "forgemeta": "%{nil}",
