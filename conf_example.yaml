@@ -12,11 +12,11 @@ actions:
   # replace - actions for replacing strings. Specify target (path to the file or "spec" for the spec file).
   - replace:
       - target: "spec"  # the target can be "spec" or a file to which changes are applied (in this case, the file will be searched for). glob patterns are supported.
-        find: "RHEL" # string to be replaced
+        find: "Upstream Vendor Linux" # string to be replaced (e.g. the upstream distribution's product name)
         replace: "AlmaLinux" # string to replace with
         count: 1  # number of replacements, default is -1 (all occurrences)
       - target: "README.md"
-        find: "RHEL"
+        find: "Upstream Vendor Linux"
         replace: "AlmaLinux"
 
   # delete_line - list of lines to delete. 

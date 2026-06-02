@@ -5,7 +5,7 @@ description: Create and maintain AlmaLinux autopatch configs for RPM packages. U
 
 # AlmaLinux Autopatch
 
-Autopatch automates modifications to CentOS/RHEL source packages for AlmaLinux rebuilds. Each package gets a git repo under the [autopatch](https://git.almalinux.org/autopatch) namespace with a `config.yaml` that declares spec changes, patches, and branding. The corresponding RPM dist-git sources live under [rpms](https://git.almalinux.org/rpms/).
+Autopatch automates modifications to upstream Enterprise Linux source packages for AlmaLinux rebuilds. Each package gets a git repo under the [autopatch](https://git.almalinux.org/autopatch) namespace with a `config.yaml` that declares spec changes, patches, and branding. The corresponding RPM dist-git sources live under [rpms](https://git.almalinux.org/rpms/).
 
 ## Repository Layout
 
@@ -49,7 +49,7 @@ String replacement in spec or source files. Supports glob patterns in `target`. 
 ```yaml
   - replace:
     - target: "spec"
-      find: "Red Hat Enterprise Linux"
+      find: "Upstream Vendor Linux"      # the upstream distribution's product name
       replace: "AlmaLinux"
       count: 2
     - target: "*.config"
@@ -179,16 +179,16 @@ actions:
 
 ### Debranding package
 
-Replace RHEL references with AlmaLinux throughout the spec.
+Replace upstream vendor references with AlmaLinux throughout the spec.
 
 ```yaml
 actions:
   - replace:
     - target: "spec"
-      find: "Red Hat Enterprise Linux"
+      find: "Upstream Vendor Linux"      # the upstream distribution's product name
       replace: "AlmaLinux"
     - target: "spec"
-      find: "https://bugzilla.redhat.com/"
+      find: "https://bugs.example.com/"  # the upstream bug tracker URL
       replace: "https://bugs.almalinux.org/"
       count: 1
 
@@ -205,14 +205,14 @@ actions:
 
 ### Secure boot / signing
 
-Replace RHEL certificates and signing references.
+Replace upstream certificates and signing references.
 
 ```yaml
   - replace:
     - target: "spec"
       find: |
-            Source10: redhatsecurebootca3.cer
-            Source11: centossecurebootca2.cer
+            Source10: upstreamsecurebootca3.cer
+            Source11: upstreamsecurebootca2.cer
       replace: |
             Source10: almalinuxsecurebootca0.cer
             Source11: almalinuxsecureboot0.cer
@@ -247,15 +247,14 @@ Add RISC-V support by adjusting arch lists and adding patches.
 ## Workflow: Creating a New Autopatch Config
 
 1. **Clone/init the autopatch repo** for the package on the correct branch (`a8`, `a9`, `a10s`, etc.)
-2. **Identify changes needed** by diffing the AlmaLinux dist-git branch against the upstream CentOS import. CentOS branches map to AlmaLinux branches as follows:
+2. **Identify changes needed** by diffing the AlmaLinux dist-git branch against the upstream import. Upstream branches map to AlmaLinux branches as follows:
 
-   | CentOS (upstream) | AlmaLinux |
+   | Upstream | AlmaLinux |
    |---|---|
    | `c8` | `a8` |
    | `c9` | `a9` |
    | `c10` | `a10` |
    | `c10s` | `a10s` |
-   | `c8-stream-rhel8` | `a8-stream-rhel8` |
 
    For example, to see what AlmaLinux changed in a package for EL8:
    ```

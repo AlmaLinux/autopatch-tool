@@ -5,13 +5,13 @@ try:
     from autopatch.tools.logger import logger
     from autopatch.actions_handler import ConfigReader
     from autopatch.tools.git import GitRepository, GitAlmaLinux, DirectoryManager
-    from autopatch.tools.rpm import extract_rhel_version
+    from autopatch.tools.rpm import extract_el_version
     from autopatch.tools.branch import resolve_config_branch, strip_beta
 except ImportError:
     from tools.logger import logger
     from actions_handler import ConfigReader
     from tools.git import GitRepository, GitAlmaLinux, DirectoryManager
-    from tools.rpm import extract_rhel_version
+    from tools.rpm import extract_el_version
     from tools.branch import resolve_config_branch, strip_beta
 
 BRANCH_NOT_MODIFIED = "Branch is not modified"
@@ -58,8 +58,8 @@ def apply_modifications(
         config_repo.checkout_branch(config_branch)
         config_repo.pull()
 
-    rhel_version = extract_rhel_version(branch)
-    logger.info(f"Detected RHEL version: {rhel_version} (from branch '{branch}')")
+    el_version = extract_el_version(branch)
+    logger.info(f"Detected EL version: {el_version} (from branch '{branch}')")
 
     config_files = get_config_files(autopatch_working_dir, package)
     if not config_files:
@@ -72,7 +72,7 @@ def apply_modifications(
 
         config = ConfigReader(
             f"{autopatch_working_dir}/{package}/{config_file}",
-            rhel_version=rhel_version
+            el_version=el_version
         )
         if config.global_parameters.custom_target_branch:
             _al_branch = config.global_parameters.custom_target_branch
