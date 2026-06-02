@@ -64,6 +64,81 @@ actions:
     assert config_reader.global_parameters.tag_prefix == ""
 
 
+def test_global_parameters_el_version_default():
+    params = GlobalParameters()
+    assert params.el_version == "8"
+
+def test_global_parameters_el_version_custom():
+    params = GlobalParameters({"el_version": "9"})
+    assert params.el_version == "9"
+
+def test_global_parameters_el_version_legacy_alias():
+    # The legacy "rhel_version" key must still be accepted as an alias.
+    params = GlobalParameters({"rhel_version": "9"})
+    assert params.el_version == "9"
+
+def test_global_parameters_el_version_prefers_new_key():
+    # When both keys are present, "el_version" wins over the legacy alias.
+    params = GlobalParameters({"el_version": "10", "rhel_version": "9"})
+    assert params.el_version == "10"
+
+def test_global_parameters_el_version_from_config(create_temp_config_file):
+    config_string = """
+parameters:
+  el_version: "10"
+actions:
+  - replace:
+      - target: "spec"
+        find: "RHEL"
+        replace: "AlmaLinux"
+"""
+    temp_config = create_temp_config_file(config_string)
+    config_reader = ConfigReader(temp_config)
+    assert config_reader.global_parameters.el_version == "10"
+
+def test_global_parameters_el_version_legacy_from_config(create_temp_config_file):
+    config_string = """
+parameters:
+  rhel_version: "10"
+actions:
+  - replace:
+      - target: "spec"
+        find: "RHEL"
+        replace: "AlmaLinux"
+"""
+    temp_config = create_temp_config_file(config_string)
+    config_reader = ConfigReader(temp_config)
+    assert config_reader.global_parameters.el_version == "10"
+
+def test_global_parameters_el_version_uses_constructor_default(create_temp_config_file):
+    # When the config omits the key, the value passed to ConfigReader is used.
+    config_string = """
+actions:
+  - replace:
+      - target: "spec"
+        find: "RHEL"
+        replace: "AlmaLinux"
+"""
+    temp_config = create_temp_config_file(config_string)
+    config_reader = ConfigReader(temp_config, el_version="9")
+    assert config_reader.global_parameters.el_version == "9"
+
+def test_global_parameters_el_version_config_overrides_constructor(create_temp_config_file):
+    # An explicit key in the config overrides the constructor default.
+    config_string = """
+parameters:
+  el_version: "10"
+actions:
+  - replace:
+      - target: "spec"
+        find: "RHEL"
+        replace: "AlmaLinux"
+"""
+    temp_config = create_temp_config_file(config_string)
+    config_reader = ConfigReader(temp_config, el_version="9")
+    assert config_reader.global_parameters.el_version == "10"
+
+
 def test_add_files_entry_valid():
     entry = AddFilesEntry(global_parameters=GlobalParameters(), type="source", name="example.tar.gz", number=1)
     assert entry.type == "source"
