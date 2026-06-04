@@ -22,6 +22,7 @@ try:
         get_name_from_payload,
         get_branch_from_payload,
         get_pushed_branch,
+        get_merge_source_branch,
     )
     from autopatch.tools.branch import (
         resolve_upstream_branch,
@@ -40,6 +41,7 @@ except ImportError:
         get_name_from_payload,
         get_branch_from_payload,
         get_pushed_branch,
+        get_merge_source_branch,
     )
     from tools.branch import (
         resolve_upstream_branch,
@@ -175,6 +177,21 @@ def autopatch_config_pushed():
                 result={
                     'message': 'Nothing to rebuild, not an autopatch config branch',
                     'details': f"branch - {config_branch}",
+                },
+                status_code=HTTP_200_OK,
+                success=False,
+            )
+
+        # Ignore merges between config branches (e.g. forward-merging a9-beta
+        # into a9): the fix already triggered a rebuild on the source branch.
+        # Merges from non-config branches (agent-fix/*) and plain direct pushes
+        # are not affected.
+        merge_source = get_merge_source_branch(payload)
+        if merge_source and is_config_branch(merge_source):
+            return jsonify_response(
+                result={
+                    'message': 'Nothing to rebuild, merge between config branches',
+                    'details': f"merge from {merge_source} into {config_branch}",
                 },
                 status_code=HTTP_200_OK,
                 success=False,
