@@ -226,6 +226,66 @@ class TestConfigPushRestart:
 
         mock_apply.assert_not_called()
 
+    def test_ignored_on_merge_between_config_branches(self, client, mocker):
+        """Forward-merging a config branch into another (a9-beta -> a9) must
+        not retrigger a rebuild on the target branch."""
+        mod = _webserv_mod(client)
+        mock_apply = mocker.patch.object(mod, "apply_modifications")
+        payload = {
+            **CONFIG_PUSH_PAYLOAD,
+            "ref": "refs/heads/a9",
+            "head_commit": {"message": "Merge branch 'a9-beta' into a9"},
+        }
+
+        resp = _post_config_push(client, payload)
+
+        assert resp.status_code == 200
+        mock_apply.assert_not_called()
+
+    def test_ignored_on_pr_merge_between_config_branches(self, client, mocker):
+        mod = _webserv_mod(client)
+        mock_apply = mocker.patch.object(mod, "apply_modifications")
+        payload = {
+            **CONFIG_PUSH_PAYLOAD,
+            "ref": "refs/heads/a9",
+            "head_commit": {
+                "message": (
+                    "Merge pull request 'Forward port' (#42) "
+                    "from almalinux/qemu-kvm:a9-beta into a9"
+                ),
+            },
+        }
+
+        resp = _post_config_push(client, payload)
+
+        assert resp.status_code == 200
+        mock_apply.assert_not_called()
+
+    def test_rebuilds_on_merge_from_non_config_branch(self, client, mocker):
+        """A merge from an agent-fix branch into a config branch is a real fix
+        landing and must still trigger a rebuild."""
+        mod = _webserv_mod(client)
+        mock_apply = mocker.patch.object(
+            mod, "apply_modifications", return_value=mod.SUCCESS,
+        )
+        mocker.patch.object(mod.tools_slack, "success_message")
+        payload = {
+            **CONFIG_PUSH_PAYLOAD,
+            "head_commit": {
+                "message": (
+                    "Merge pull request 'fix' (#7) "
+                    "from agent-fix/a9-beta-20260601 into a9-beta"
+                ),
+            },
+        }
+
+        resp = _post_config_push(client, payload)
+
+        assert resp.status_code == 200
+        mock_apply.assert_called_once_with(
+            "qemu-kvm", "c9-beta", target_branch="a9-beta",
+        )
+
     def test_failure_notifies_slack(self, client, mocker):
         mod = _webserv_mod(client)
         mocker.patch.object(
@@ -240,3 +300,57 @@ class TestConfigPushRestart:
         args = mock_failed.call_args[0]
         assert args[0] == "qemu-kvm"
         assert args[1] == "a9-beta"
+
+
+try:
+    from autopatch.tools.webserv_tools import get_merge_source_branch
+except ModuleNotFoundError:
+    from tools.webserv_tools import get_merge_source_branch
+
+
+class TestGetMergeSourceBranch:
+
+    @pytest.mark.parametrize(
+        "message, expected",
+        [
+            # plain git merge
+            ("Merge branch 'a9-beta' into a9", "a9-beta"),
+            # git merge into the default branch (no "into")
+            ("Merge branch 'a9-beta'", "a9-beta"),
+            # Gitea PR merge, same repo
+            (
+                "Merge pull request 'Title' (#1) from a9-beta into a9",
+                "a9-beta",
+            ),
+            # Gitea PR merge, cross-repo (owner/repo:branch)
+            (
+                "Merge pull request 'Title' (#1) "
+                "from almalinux/qemu-kvm:a9-beta into a9",
+                "a9-beta",
+            ),
+            # PR merge from an agent-fix branch
+            (
+                "Merge pull request 'fix' (#7) "
+                "from agent-fix/a9-beta-20260601 into a9-beta",
+                "agent-fix/a9-beta-20260601",
+            ),
+            # title containing the word "from" must not confuse extraction
+            (
+                "Merge pull request 'Backport from upstream' (#9) "
+                "from a9s into a9",
+                "a9s",
+            ),
+            # not a merge -> no source
+            ("Fix CVE-2026-1234 in spec", ""),
+            # multi-line message: only the subject line is parsed
+            ("Merge branch 'a9-beta' into a9\n\nDetails here", "a9-beta"),
+        ],
+    )
+    def test_extracts_source_branch(self, message, expected):
+        payload = {"head_commit": {"message": message}}
+        assert get_merge_source_branch(payload) == expected
+
+    def test_missing_head_commit_returns_empty(self):
+        assert get_merge_source_branch({}) == ""
+        assert get_merge_source_branch({"head_commit": None}) == ""
+        assert get_merge_source_branch({"head_commit": {}}) == ""

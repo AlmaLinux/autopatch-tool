@@ -167,6 +167,7 @@ release line — it works regardless of the upstream release number and handles
 |-------|------|---------|-------------|
 | `suffix` | str | — | Suffix appended to `Release:` (e.g. `.alma.1`). |
 | `enabled` | bool | `true` | Set `false` to disable without removing the block. |
+| `auto_increment` | bool | `false` | Treat the trailing number of `suffix` as a starting value and bump it automatically based on existing git tags. |
 
 ```yaml
   - modify_release:
@@ -180,6 +181,34 @@ release line — it works regardless of the upstream release number and handles
   final-line template instead of the literal `Release:` value.
 - The combined suffix from all enabled `modify_release` entries is also appended
   to the git tag.
+
+#### `auto_increment`
+
+With `auto_increment: true` you no longer bump the suffix number by hand. The
+trailing number of `suffix` is used as a *starting* value, and on every run the
+tool resolves the next iteration from the tags that already exist in the rpms
+repository:
+
+- It looks for tags of the form `<tag_prefix><base_tag><stem><N>` (e.g.
+  `changed/a9/<NVR>.alma.2`) and picks the highest existing `N` plus one.
+- If no such tag exists yet, the number configured in `suffix` is used as-is.
+- When the upstream version changes, no matching tags exist for the new version,
+  so the count effectively resets to the starting value.
+
+The resolved suffix is applied to both the spec `Release:` line and the git tag,
+keeping the two in sync. For the same upstream version `.alma.1` becomes
+`.alma.2`, `.alma.3`, … across successive runs.
+
+```yaml
+  - modify_release:
+    - suffix: ".alma.1"
+      enabled: true
+      auto_increment: true
+```
+
+> **Note:** when `auto_increment` is enabled, `suffix` **must end with a number**
+> (e.g. `.alma.1`). Otherwise the configuration is rejected with a validation
+> error, since there is no trailing number to increment.
 
 ### `changelog_entry`
 
