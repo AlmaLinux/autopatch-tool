@@ -58,9 +58,17 @@ branch (a10-beta) — whichever was available and most likely to have the fix.
   {
     "success": true,
     "summary": "Updated find string in replace action #3 to match new spec wording",
-    "analysis": "The upstream spec changed 'Requires: foo' to 'Requires: foo-libs'"
+    "analysis": "The upstream spec changed the dependency line:\n\n- `Requires: foo` became `Requires: foo-libs`\n- The replace action's `find` value no longer matched, so the action was skipped\n\nUpdated the `find` to the new wording, preserving the replacement semantics."
   }
   ```
+- Both `summary` and `analysis` are rendered directly as **GitHub-flavored Markdown**
+  in the pull-request description, so format them to read well:
+  - `summary` — one plain sentence, no list markup.
+  - `analysis` — use real Markdown. When you have several distinct points, write a
+    Markdown list (`- item` or `1. item`), one point per line, **not** an inline
+    `(1) … (2) … (3) …` run-on sentence. Put a blank line before the list. Wrap
+    file names, identifiers, spec directives and values in backticks
+    (e.g. `` `GOAMD64=v3` ``, `` `%if %{race}` ``).
 - If the fix failed or the error requires manual intervention (e.g. patch regeneration),
   set `"success": false` and explain why in `summary`.
 - If $DRY_RUN == "true": analyze and write the result, but do NOT modify config.yaml.

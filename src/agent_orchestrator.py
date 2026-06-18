@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -375,6 +376,41 @@ def _ensure_remote_branch(
 GITEA_API_BASE = "https://git.almalinux.org/api/v1"
 
 
+# Matches inline enumerations like " (1) ", "(2) ", " (3)\n" inside prose.
+_INLINE_ENUM_RE = re.compile(r"\s*\((\d+)\)\s+")
+
+
+def _normalize_analysis(text: str) -> str:
+    """Render the agent's `analysis` as clean Markdown.
+
+    The agent is asked to format `analysis` as a Markdown list, but older runs
+    (and occasional lapses) emit a single prose paragraph with inline numbering
+    like ``... refactored: (1) foo, (2) bar, (3) baz``. Markdown shows that as
+    one run-on line, so we turn such enumerations into a numbered list. Text
+    that already uses list markers, or has no enumeration, is left untouched.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return stripped
+    # Already a Markdown list -> leave as-is.
+    if re.search(r"(?m)^\s*([-*]|\d+\.)\s+", stripped):
+        return stripped
+    # parts = [intro, '1', item1, '2', item2, ...]
+    parts = _INLINE_ENUM_RE.split(stripped)
+    # Need an intro plus at least two numbered items to be confident.
+    if len(parts) < 5 or parts[1] != "1":
+        return stripped
+    intro = parts[0].rstrip()
+    items = [
+        f"{parts[i]}. {parts[i + 1].strip().rstrip(',;').strip()}"
+        for i in range(1, len(parts) - 1, 2)
+        if parts[i + 1].strip()
+    ]
+    out = [intro, ""] if intro else []
+    out.extend(items)
+    return "\n".join(out)
+
+
 def _format_pr_body(
     package: str,
     branch: str,
@@ -389,7 +425,7 @@ def _format_pr_body(
 
     analysis = result_data.get("analysis")
     if analysis:
-        lines += ["", "### Root cause", analysis]
+        lines += ["", "### Root cause", _normalize_analysis(analysis)]
 
     error_type = error_context.get("error_type")
     traceback_str = error_context.get("traceback")

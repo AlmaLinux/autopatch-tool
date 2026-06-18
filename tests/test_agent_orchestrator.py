@@ -17,6 +17,7 @@ from src.agent_orchestrator import (
     _create_pull_request,
     _ensure_remote_branch,
     _format_pr_body,
+    _normalize_analysis,
     _run_container,
     _write_log,
     _send_slack,
@@ -474,6 +475,60 @@ class TestFormatPrBody:
         body = _format_pr_body("kernel", "c10s", {"summary": "fix"}, {})
         assert "Package: `kernel`" in body
         assert "Webhook branch: `c10s`" in body
+
+    def test_inline_enumeration_becomes_list_in_body(self):
+        result = {
+            "summary": "fix",
+            "analysis": "Spec refactored: (1) race moved to top, (2) block wrapped.",
+        }
+        body = _format_pr_body("httpd", "c9", result, {})
+        assert "1. race moved to top" in body
+        assert "2. block wrapped." in body
+
+
+class TestNormalizeAnalysis:
+
+    def test_inline_enumeration_split_into_numbered_list(self):
+        text = (
+            "The upstream spec was refactored: (1) race moved to the top, "
+            "(2) the build block is wrapped, (3) the call changed to v1, "
+            "(4) export lines replaced."
+        )
+        out = _normalize_analysis(text)
+        assert out == (
+            "The upstream spec was refactored:\n"
+            "\n"
+            "1. race moved to the top\n"
+            "2. the build block is wrapped\n"
+            "3. the call changed to v1\n"
+            "4. export lines replaced."
+        )
+
+    def test_existing_markdown_list_untouched(self):
+        text = "Root cause:\n\n- first point\n- second point"
+        assert _normalize_analysis(text) == text
+
+    def test_existing_numbered_markdown_list_untouched(self):
+        text = "1. first point\n2. second point"
+        assert _normalize_analysis(text) == text
+
+    def test_plain_prose_untouched(self):
+        text = "Upstream changed 'Requires: foo' to 'Requires: foo-libs'."
+        assert _normalize_analysis(text) == text
+
+    def test_single_parenthetical_not_treated_as_list(self):
+        text = "The build (1) failed because of a missing dependency."
+        assert _normalize_analysis(text) == text
+
+    def test_strips_surrounding_whitespace(self):
+        assert _normalize_analysis("  hello  ") == "hello"
+
+    def test_empty_string(self):
+        assert _normalize_analysis("") == ""
+
+    def test_enumeration_not_starting_at_one_untouched(self):
+        text = "See refs (2) and (3) for details."
+        assert _normalize_analysis(text) == text
 
 
 class TestCreatePullRequest:
