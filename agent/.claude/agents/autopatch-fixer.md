@@ -44,13 +44,24 @@ branch (a10-beta) — whichever was available and most likely to have the fix.
 - Update `/workspace/autopatch/{package}/config.yaml` (or config*.yaml)
 - Do NOT modify .patch file contents
 - Do NOT change the author in changelog_entry
-- Do NOT remove actions unless they are clearly obsolete
-- When updating `find`/`rfind` values, preserve the replacement semantics
+- Do NOT remove actions unless they are clearly obsolete. A failing `find` is NOT proof
+  of obsolescence -- upstream may have moved the same value behind a macro, variable, or
+  renamed literal. Distinguish "dropped upstream" (remove) from "moved behind an
+  indirection" (re-target the action at the new source); see the `fix-patterns` skill,
+  "Disappeared `find`: dropped vs. moved behind an indirection".
+- When updating `find`/`rfind` values, preserve the *intent* -- the value the action makes
+  reach the build -- not just a locally-sensible `replace`. Patch the single source of a
+  value (a `%global`/`%define`), not each leaf that consumes it.
 
 ### 3. Validate
 - Run: `autopatch_validate_config /workspace/autopatch/{package}/config*.yaml`
 - Run: `autopatch /workspace/autopatch/{package}/config.yaml /workspace/rpms/{package}/`
 - If validation fails, go back to step 2
+- These checks only prove the actions applied without error -- not that the build outcome
+  is correct. For every action you removed or changed, confirm its intent is still realized
+  in the resulting spec (see `fix-patterns`, "Verify the effect survives"). If the changelog
+  promises an effect your config no longer produces, that is a regression: fix the config,
+  not the changelog.
 
 ### 4. Result
 - Write the result JSON to `/workspace/result/agent_result.json`:
