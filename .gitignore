@@ -9,6 +9,9 @@ main.py
 tests/results/
 main_git.py
 *namespace
+# Per-run debranding working roots (autopatch-<package>-<rand>); normally
+# cleaned up automatically, this only catches leftovers from a killed run.
+autopatch-*/
 ansible/inventory/hosts.yml
 diff.diff
 .cas
