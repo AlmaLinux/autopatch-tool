@@ -82,6 +82,8 @@ def apply_modifications(
             logger.warning(f"No config files found for package {package}")
             raise RuntimeError(f"No config files found for package {package}")
 
+        any_committed = False
+
         for config_file in config_files:
             logger.info(f"Processing config file {config_file}")
             _al_branch = al_branch
@@ -137,13 +139,24 @@ def apply_modifications(
 
                 changelog_entries, name, email = config.get_changelog()
 
-                git_repo.commit(changelog_entries, name, email)
+                if not git_repo.commit(changelog_entries, name, email):
+                    # Debranding produced no change relative to the target
+                    # branch -- e.g. the package is already debranded for the
+                    # current upstream state. There is nothing to tag, push or
+                    # notarize: a no-op run, not a failure.
+                    logger.info(
+                        f"No changes for {package} on branch {_al_branch}; "
+                        "already up to date"
+                    )
+                    continue
+
+                any_committed = True
                 if not no_tag:
                     git_repo.create_tag(tag, prefix=config.global_parameters.tag_prefix)
                 git_repo.push(_al_branch)
                 git_repo.notarize_commit(upstream_hash)
 
-        return SUCCESS
+        return SUCCESS if any_committed else BRANCH_NOT_MODIFIED
     finally:
         # Always remove the isolated working tree. A fresh clone is made on
         # every run, so nothing here is reused; keeping it would leak a full

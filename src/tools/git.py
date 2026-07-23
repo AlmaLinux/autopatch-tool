@@ -106,13 +106,36 @@ class GitRepository:
         self.run_in_repo(*command)
         self.push_tags()
 
-    def commit(self, message: list, name: str, email: str):
+    def commit(self, message: list, name: str, email: str) -> bool:
+        """
+        Stage all changes and create a commit.
+
+        Returns ``True`` when a commit was created and ``False`` when there was
+        nothing to commit (the tree already matches HEAD). ``git commit`` exits
+        non-zero with an empty stderr in that case, which :func:`run_command`
+        would otherwise turn into a fatal ``RuntimeError``. Callers use the
+        return value to skip tagging and pushing on a no-op run -- e.g. a
+        package that is already debranded for the current upstream state.
+        """
+        self.run_in_repo("git", "add", ".")
+        with DirectoryManager(self.name):
+            # exit 0 => index matches HEAD (nothing staged); exit 1 => changes.
+            # without_log keeps the expected exit-1 off the ERROR log.
+            staged = run_command(
+                ["git", "diff", "--cached", "--quiet"],
+                raise_on_failure=False,
+                without_log=True,
+            )
+        if staged.returncode == 0:
+            logger.info(f"Nothing to commit to {self.url}; skipping commit")
+            return False
+
         logger.info(f"Committing changes to {self.url}")
         commit_messages = []
         for line in message:
             commit_messages.extend(["-m", line])
-        self.run_in_repo("git", "add", ".")
         self.run_in_repo("git", "commit", "--author", f'"{name} <{email}>"', *commit_messages)
+        return True
 
     def checkout_branch(self, branch: str):
         logger.info(f"Checking out branch {branch}")
