@@ -60,6 +60,12 @@ HTTP_400_BAD_REQUEST = 400
 )
 @auth_key_required
 def debrand_packages():
+    # Bound before the try so the except block can always report the failure:
+    # anything raised while parsing the payload would otherwise leave these
+    # unset and turn the handler itself into an UnboundLocalError, losing both
+    # the Slack notification and the agent launch below.
+    repo_name = ''
+    branch = ''
     try:
         logger.debug(json.dumps(request.json, indent=4))
 
@@ -102,7 +108,10 @@ def debrand_packages():
     except Exception as err:
         logger.error(err)
         tools_slack.failed_message(repo_name, branch, str(err))
-        if os.environ.get("AGENT_ENABLED", "").lower() == "true":
+        agent_enabled = os.environ.get("AGENT_ENABLED", "").lower() == "true"
+        # The agent analyses one package on one branch, so it has nothing to
+        # work with when the failure happened before those were parsed.
+        if agent_enabled and repo_name and branch:
             try:
                 from agent_handler import fire_agent
             except ImportError:
@@ -113,6 +122,11 @@ def debrand_packages():
                     logger.info("Agent launched: pid %s", agent_pid)
             except Exception as agent_err:
                 logger.error("Agent launch failed: %s", agent_err)
+        elif agent_enabled:
+            logger.error(
+                "Agent not launched, package or branch unknown: "
+                "repo name - %s, branch - %s", repo_name, branch,
+            )
         return jsonify_response(
             result={'message': str(err)},
             status_code=HTTP_200_OK,

@@ -170,6 +170,56 @@ class TestAgentIntegration:
         # If we got here without an unhandled exception,
         # the agent crash was properly caught.
 
+    def test_bare_ref_payload_is_skipped(self, client, mocker, monkeypatch):
+        """Gitea create/delete events send a bare ref, not refs/.../<branch>.
+
+        Such a payload has no branch to debrand: it must be answered with a
+        plain "nothing to sync" instead of failing the whole request.
+        """
+        monkeypatch.setenv("AGENT_ENABLED", "true")
+        mod = _webserv_mod(client)
+        mock_apply = mocker.patch.object(mod, "apply_modifications")
+        mock_failed = mocker.patch.object(mod.tools_slack, "failed_message")
+        mock_fire = mocker.patch(_mod(client, "agent_handler.fire_agent"))
+
+        resp = _post(
+            client, {"repository": {"name": "httpd"}, "ref": "c10s"},
+        )
+
+        assert resp is not None
+        assert resp.status_code == 200
+        assert resp.get_json()["success"] is False
+        mock_apply.assert_not_called()
+        mock_failed.assert_not_called()
+        mock_fire.assert_not_called()
+
+    def test_payload_failure_is_reported_not_raised(
+        self, client, mocker, monkeypatch
+    ):
+        """A crash before the payload is parsed must still reach Slack.
+
+        repo_name/branch are only assigned inside the try block, so the
+        except block used to raise UnboundLocalError and lose the report.
+        """
+        monkeypatch.setenv("AGENT_ENABLED", "true")
+        mod = _webserv_mod(client)
+        mocker.patch.object(
+            mod,
+            "get_name_from_payload",
+            side_effect=ValueError("malformed payload"),
+        )
+        mock_failed = mocker.patch.object(mod.tools_slack, "failed_message")
+        mock_fire = mocker.patch(_mod(client, "agent_handler.fire_agent"))
+
+        resp = _post(client)
+
+        assert resp is not None
+        assert resp.status_code == 200
+        assert resp.get_json()["success"] is False
+        mock_failed.assert_called_once_with("", "", "malformed payload")
+        # Nothing for the agent to analyse without a package and branch.
+        mock_fire.assert_not_called()
+
 
 class TestConfigPushRestart:
 
@@ -303,9 +353,15 @@ class TestConfigPushRestart:
 
 
 try:
-    from autopatch.tools.webserv_tools import get_merge_source_branch
+    from autopatch.tools.webserv_tools import (
+        get_branch_from_payload,
+        get_merge_source_branch,
+    )
 except ModuleNotFoundError:
-    from tools.webserv_tools import get_merge_source_branch
+    from tools.webserv_tools import (
+        get_branch_from_payload,
+        get_merge_source_branch,
+    )
 
 
 class TestGetMergeSourceBranch:
@@ -354,3 +410,26 @@ class TestGetMergeSourceBranch:
         assert get_merge_source_branch({}) == ""
         assert get_merge_source_branch({"head_commit": None}) == ""
         assert get_merge_source_branch({"head_commit": {}}) == ""
+
+
+class TestGetBranchFromPayload:
+
+    @pytest.mark.parametrize(
+        "ref, expected",
+        [
+            # upstream import tag -- the ref debranding actually runs on
+            ("refs/tags/imports/c10s/kernel-6.12.0-211.el10", "c10s"),
+            ("refs/tags/imports/c9/httpd-2.4.62-4.el9", "c9"),
+            # branch push
+            ("refs/heads/c9", "heads"),
+            # bare name, as sent by Gitea create/delete events -> skipped
+            ("c10s", ""),
+            ("", ""),
+        ],
+    )
+    def test_extracts_branch(self, ref, expected):
+        assert get_branch_from_payload({"ref": ref}) == expected
+
+    def test_missing_or_null_ref_returns_empty(self):
+        assert get_branch_from_payload({}) == ""
+        assert get_branch_from_payload({"ref": None}) == ""

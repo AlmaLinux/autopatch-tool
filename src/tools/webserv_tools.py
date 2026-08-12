@@ -57,9 +57,21 @@ def get_name_from_payload(
 def get_branch_from_payload(
     payload: Dict[str, Any]
 ) -> str:
-    if 'ref' in payload:
-        return payload['ref'].split('/')[-2]
-    return ''
+    """Extract the upstream branch from an import *tag* push payload.
+
+    Debranding is triggered by the upstream import tags pushed to the rpms
+    namespace, ``refs/tags/imports/<branch>/<nvr>``, where the branch is the
+    second-to-last path segment (e.g. ``c10s``).
+
+    Returns '' for a ``ref`` that carries no branch in that position — a bare
+    name, as sent by Gitea branch/tag *create* and *delete* events — so the
+    caller skips the payload instead of failing on it.
+    """
+    ref = payload.get('ref') or ''
+    parts = ref.split('/')
+    if len(parts) < 2:
+        return ''
+    return parts[-2]
 
 def get_tag_from_payload(
     payload: Dict[str, Any]
