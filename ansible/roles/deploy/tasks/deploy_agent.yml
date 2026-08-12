@@ -45,3 +45,26 @@
       podman run -it -v {{ deploy_agent_auth_volume }}:/home/agent/.claude
       --entrypoint claude {{ deploy_agent_image }} login
   when: auth_check.rc != 0
+
+# The check above only proves the credentials file exists. A session can stop
+# refreshing while the file stays in place, which is invisible until the next
+# package failure needs the agent -- hence the periodic probe.
+- name: Create auth probe units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ deploy_systemd_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: 0640
+    force: yes
+  loop:
+    - almalinux-autopatch-authcheck.service
+    - almalinux-autopatch-authcheck.timer
+
+- name: Enable auth probe timer
+  systemd:
+    name: almalinux-autopatch-authcheck.timer
+    state: started
+    enabled: yes
+    masked: no
+    daemon_reload: yes

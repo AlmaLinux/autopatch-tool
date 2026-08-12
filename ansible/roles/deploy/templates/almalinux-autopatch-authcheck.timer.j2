@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic Claude Code auth probe for the autopatch agent
+
+[Timer]
+OnCalendar={{ deploy_agent_authcheck_schedule }}
+# Catch up after downtime, and spread load if several hosts are deployed.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

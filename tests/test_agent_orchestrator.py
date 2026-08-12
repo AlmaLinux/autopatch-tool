@@ -20,7 +20,10 @@ from src.agent_orchestrator import (
     _normalize_analysis,
     _run_container,
     _write_log,
+    _send_auth_slack,
     _send_slack,
+    check_auth,
+    is_auth_failure,
     run_pipeline,
 )
 from src.tools.branch import (
@@ -939,3 +942,171 @@ class TestRunPipeline:
         import glob
         work_dirs = glob.glob(os.path.join(tempfile.gettempdir(), "agent-work-*"))
         assert len(work_dirs) >= 1
+
+
+# The exact line Claude Code prints when the stored session is dead.
+AUTH_401 = (
+    'Failed to authenticate. API Error: 401 {"type":"error","error":'
+    '{"type":"authentication_error","message":"OAuth access token has '
+    'expired. Re-authenticate to continue."},"request_id":null}'
+)
+
+
+class TestIsAuthFailure:
+
+    def test_detects_expired_oauth_token(self):
+        assert is_auth_failure(AUTH_401)
+
+    def test_detects_login_prompt(self):
+        assert is_auth_failure("Not logged in, please run /login to continue")
+
+    def test_is_case_insensitive(self):
+        assert is_auth_failure("OAUTH ACCESS TOKEN HAS EXPIRED")
+
+    def test_rate_limit_is_not_an_auth_failure(self):
+        """A rate limit must not raise a re-login alert -- different fix."""
+        assert not is_auth_failure("You've hit your limit, try again later")
+
+    def test_ordinary_output_is_not_an_auth_failure(self):
+        assert not is_auth_failure(
+            "Action 'ReplaceAction' was not applied successfully"
+        )
+
+    def test_empty_output(self):
+        assert not is_auth_failure("")
+
+
+class TestCheckAuth:
+
+    def test_healthy_session(self, mocker):
+        mocker.patch("subprocess.run", return_value=subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="OK", stderr="",
+        ))
+        assert check_auth() is True
+
+    def test_dead_session(self, mocker):
+        mocker.patch("subprocess.run", return_value=subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr=AUTH_401,
+        ))
+        assert check_auth() is False
+
+    def test_probe_uses_auth_volume_and_image(self, mocker):
+        mock_run = mocker.patch(
+            "subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="OK", stderr="",
+            ),
+        )
+
+        check_auth(image="localhost/custom:1", auth_volume="my-auth")
+
+        cmd = mock_run.call_args[0][0]
+        assert "my-auth:/home/agent/.claude" in cmd
+        assert "localhost/custom:1" in cmd
+
+    def test_unrelated_failure_reported_healthy(self, mocker):
+        """A non-auth error must not trigger a re-login alert."""
+        mocker.patch("subprocess.run", return_value=subprocess.CompletedProcess(
+            args=[], returncode=125, stdout="", stderr="image not known",
+        ))
+        assert check_auth() is True
+
+    def test_timeout_reported_healthy(self, mocker):
+        mocker.patch("subprocess.run",
+                     side_effect=subprocess.TimeoutExpired(cmd="podman", timeout=1))
+        assert check_auth() is True
+
+    def test_podman_missing_reported_healthy(self, mocker):
+        mocker.patch("subprocess.run", side_effect=OSError("no podman"))
+        assert check_auth() is True
+
+
+class TestSendAuthSlack:
+
+    def test_passes_relogin_details(self, mocker):
+        mock_slack = mocker.patch("src.agent_orchestrator.tools_slack")
+
+        _send_auth_slack("claude-auth", "localhost/autopatch-agent:latest",
+                         "glibc", "c10s")
+
+        mock_slack.agent_auth_failed_message.assert_called_once_with(
+            auth_volume="claude-auth",
+            image="localhost/autopatch-agent:latest",
+            package="glibc",
+            branch="c10s",
+        )
+
+    def test_survives_slack_outage(self, mocker):
+        mock_slack = mocker.patch("src.agent_orchestrator.tools_slack")
+        mock_slack.agent_auth_failed_message.side_effect = Exception("slack down")
+
+        _send_auth_slack("claude-auth", "img")  # must not raise
+
+
+def _fake_auth_failed_container():
+    """Fake container that fails auth but still writes a fallback result.
+
+    This is what production does: entrypoint.sh writes agent_result.json from
+    stdout even when Claude Code never ran, so the auth failure is only
+    visible in the output.
+    """
+    def _side_effect(work_dir, *_args, **_kwargs):
+        result_dir = os.path.join(work_dir, "result")
+        os.makedirs(result_dir, exist_ok=True)
+        with open(os.path.join(result_dir, "agent_result.json"), "w") as f:
+            json.dump({
+                "success": False,
+                "summary": "agent_result.json not written by Claude Code (exit code 1)",
+            }, f)
+        return 1, AUTH_401
+
+    return _side_effect
+
+
+class TestAuthFailureInPipeline:
+
+    def _run(self, mocker, tmp_path):
+        mocker.patch("src.agent_orchestrator._clone_repos", return_value=True)
+        mocker.patch("src.agent_orchestrator._checkout_branches",
+                     return_value="a10s")
+        mocker.patch("src.agent_orchestrator._checkout_reference_branch",
+                     return_value=None)
+        mocker.patch("src.agent_orchestrator._run_container",
+                     side_effect=_fake_auth_failed_container())
+        self.mock_push = mocker.patch("src.agent_orchestrator._commit_and_push")
+        self.mock_generic = mocker.patch("src.agent_orchestrator._send_slack")
+        self.mock_auth = mocker.patch("src.agent_orchestrator._send_auth_slack")
+        self.log_path = tmp_path / "agent_runs.jsonl"
+
+        run_pipeline(
+            "glibc", "c10s",
+            {"error_type": "ActionNotAppliedError", "message": "test"},
+            log_path=str(self.log_path),
+        )
+
+    def test_sends_relogin_alert_instead_of_generic(self, mocker, tmp_path):
+        self._run(mocker, tmp_path)
+
+        self.mock_auth.assert_called_once()
+        self.mock_generic.assert_not_called()
+
+    def test_alert_names_the_package(self, mocker, tmp_path):
+        self._run(mocker, tmp_path)
+
+        args = self.mock_auth.call_args[0]
+        assert args[2] == "glibc"
+        assert args[3] == "c10s"
+
+    def test_fallback_result_does_not_mask_auth_failure(self, mocker, tmp_path):
+        """The logged summary must say re-login, not the entrypoint fallback."""
+        self._run(mocker, tmp_path)
+
+        record = json.loads(self.log_path.read_text().strip())
+        assert record["success"] is False
+        assert "not authenticated" in record["summary"]
+        assert "re-login" in record["summary"].lower()
+
+    def test_nothing_is_pushed(self, mocker, tmp_path):
+        self._run(mocker, tmp_path)
+
+        self.mock_push.assert_not_called()

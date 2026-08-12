@@ -44,3 +44,5 @@ deploy_agent_dry_run: false
 deploy_agent_timeout: 600
 deploy_agent_image: "localhost/autopatch-agent:latest"
 deploy_agent_auth_volume: "claude-auth"
+# systemd OnCalendar expression for the Claude Code auth probe
+deploy_agent_authcheck_schedule: "daily"

@@ -28,6 +28,21 @@ import requests
 AGENT_LOG_DIR = "/var/log/autopatch/agent"
 WORK_DIR_TTL_SEC = 3600
 
+# What Claude Code prints when the stored OAuth session can no longer be used.
+# Matched against container output because the entrypoint still writes a
+# fallback agent_result.json in that case, which otherwise hides the cause
+# behind a generic "agent_result.json not written" summary.
+#
+# The access token is short-lived by design (it is refreshed silently on use),
+# so its expiry timestamp says nothing about health — only a real API call
+# distinguishes a session that still refreshes from one that is dead.
+AUTH_FAILURE_MARKERS = (
+    "oauth access token has expired",
+    "failed to authenticate. api error: 401",
+    "please run /login",
+    "invalid api key",
+)
+
 try:
     from autopatch.tools.logger import logger
     from autopatch.tools.tools import run_command
@@ -285,6 +300,66 @@ def _run_container(
         full_stdout = f.read()
 
     return proc.returncode, full_stdout
+
+
+def is_auth_failure(output: str) -> bool:
+    """True if container output shows the Claude Code session is unusable.
+
+    Deliberately narrow: a rate limit or a network error is not an auth
+    problem and must not trigger a re-login alert.
+    """
+    lowered = output.lower()
+    return any(marker in lowered for marker in AUTH_FAILURE_MARKERS)
+
+
+def check_auth(
+    image: str = "localhost/autopatch-agent:latest",
+    auth_volume: str = "claude-auth",
+    timeout: int = 120,
+) -> bool:
+    """Probe whether the stored Claude Code session still works.
+
+    Runs the smallest possible real request through the container, since the
+    stored expiry timestamp cannot tell an idle-but-refreshable session apart
+    from a dead one. Returns True when authentication succeeds.
+
+    Anything that is not recognisably an auth failure (rate limit, network,
+    missing image) is reported as healthy: this feeds an alert, and crying
+    "re-login" over an unrelated outage would train people to ignore it.
+    """
+    cmd = [
+        "podman", "run", "--rm",
+        "--security-opt", "label=disable",
+        "-v", f"{auth_volume}:/home/agent/.claude",
+        "--entrypoint", "claude",
+        image,
+        "-p", "Reply with the single word OK.",
+    ]
+
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error("Auth probe timed out after %ds", timeout)
+        return True
+    except OSError as exc:
+        logger.error("Auth probe could not run: %s", exc)
+        return True
+
+    output = (proc.stdout or "") + (proc.stderr or "")
+    if is_auth_failure(output):
+        logger.error("Auth probe failed: session needs re-login")
+        return False
+
+    if proc.returncode != 0:
+        logger.warning(
+            "Auth probe exited %d without an auth error, treating as healthy: %s",
+            proc.returncode, output.strip()[:200],
+        )
+    else:
+        logger.info("Auth probe OK")
+    return True
 
 
 def _commit_and_push(
@@ -571,6 +646,28 @@ def _send_slack(
         logger.error("Slack notification failed: %s", exc)
 
 
+def _send_auth_slack(
+    auth_volume: str,
+    image: str,
+    package: str | None = None,
+    branch: str | None = None,
+) -> None:
+    """Send the re-login alert, replacing the generic agent-failed message."""
+    if tools_slack is None:
+        logger.warning("tools.slack not available, skipping notification")
+        return
+
+    try:
+        tools_slack.agent_auth_failed_message(
+            auth_volume=auth_volume,
+            image=image,
+            package=package,
+            branch=branch,
+        )
+    except Exception as exc:
+        logger.error("Slack notification failed: %s", exc)
+
+
 def _remove_worktrees(work_dir: str) -> None:
     """Properly remove any git worktrees before deleting the work dir."""
     autopatch_dir_parent = os.path.join(work_dir, "autopatch")
@@ -675,7 +772,19 @@ def run_pipeline(
         logger.info("Container exited with code %d", exit_code)
 
         result_file = os.path.join(result_dir, "agent_result.json")
-        if os.path.exists(result_file):
+        # Checked before the result file: on an auth failure the entrypoint
+        # still writes a fallback result, which would otherwise report this as
+        # an ordinary "no fix produced" and hide that every run is now broken.
+        auth_failed = exit_code != 0 and is_auth_failure(container_stdout)
+        if auth_failed:
+            result_data = {
+                "success": False,
+                "summary": (
+                    "Claude Code session is not authenticated — re-login "
+                    f"required (exit code {exit_code})"
+                ),
+            }
+        elif os.path.exists(result_file):
             with open(result_file, encoding="utf-8") as f:
                 result_data = json.load(f)
         elif "hit your limit" in container_stdout.lower():
@@ -745,8 +854,11 @@ def run_pipeline(
 
         _write_log(log_path, package, branch, result_data, error_context,
                    branch_name, is_dry_run, start_ts, pr_url)
-        _send_slack(package, branch, result_data, branch_name, is_dry_run,
-                    pr_target_branch, pr_url, pr_blocked=pr_blocked)
+        if auth_failed:
+            _send_auth_slack(auth_volume, image, package, branch)
+        else:
+            _send_slack(package, branch, result_data, branch_name, is_dry_run,
+                        pr_target_branch, pr_url, pr_blocked=pr_blocked)
     except Exception:
         logger.exception("Orchestrator pipeline failed")
     finally:
@@ -759,7 +871,21 @@ def run_pipeline(
 def main() -> None:
     """CLI entry point — called by agent_handler via subprocess."""
     if len(sys.argv) < 2:
-        print("Usage: agent_orchestrator.py <json-args>", file=sys.stderr)
+        print(
+            "Usage: agent_orchestrator.py <json-args>\n"
+            "       agent_orchestrator.py --check-auth",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Periodic health probe (systemd timer). Without it a dead session is only
+    # noticed the next time a package actually fails, which can be days later.
+    if sys.argv[1] == "--check-auth":
+        image = os.environ.get("AGENT_IMAGE", "localhost/autopatch-agent:latest")
+        auth_volume = os.environ.get("AGENT_AUTH_VOLUME", "claude-auth")
+        if check_auth(image=image, auth_volume=auth_volume):
+            return
+        _send_auth_slack(auth_volume, image)
         sys.exit(1)
 
     args = json.loads(sys.argv[1])

@@ -137,6 +137,33 @@ podman run -it \
   login
 ```
 
+### Auth monitoring
+
+The stored OAuth session is short-lived and refreshed silently on use, so its
+expiry timestamp says nothing about health — only a real request tells a
+session that still refreshes apart from one that is dead. Two mechanisms cover
+this:
+
+- **On failure** — when a run fails to authenticate, the Slack message names it
+  as an auth problem and includes the re-login command, instead of reporting a
+  generic "agent failed to fix" (the container writes a fallback result even
+  when Claude Code never ran, which otherwise hides the cause).
+- **Periodically** — `almalinux-autopatch-authcheck.timer` (deployed with the
+  agent, `deploy_agent_authcheck_schedule`, daily by default) sends the
+  smallest possible request through the container and alerts Slack if the
+  session is dead. Without it a dead session is only noticed the next time a
+  package actually fails, which can be days later.
+
+Run the probe by hand with:
+
+```bash
+python3 src/agent_orchestrator.py --check-auth
+```
+
+It exits non-zero and posts to Slack only on an auth failure; a rate limit,
+network error or missing image is reported as healthy, so the alert stays
+trustworthy.
+
 Full agent design, data flow, manual test runs and dry-run behavior are
 documented in [`agent/README.md`](../agent/README.md).
 
@@ -177,7 +204,8 @@ tarball (see the `--exclude` flags in the `Makefile`).
   per-run logs under `/var/log/autopatch/agent/` and an append-only
   `agent_runs.jsonl`.
 - **Notifications:** success/failure and agent results are posted to the
-  `almalinux-debranding` Slack channel.
+  `almalinux-debranding` Slack channel. A dead Claude Code session is reported
+  separately, with the re-login command — see [Auth monitoring](#auth-monitoring).
 - **Idempotency:** each run resets the AlmaLinux branch to the fresh upstream
   import before applying the config, so re-running is safe.
 - **Skipping:** pushes to already-AlmaLinux branches (`a*`) are ignored by

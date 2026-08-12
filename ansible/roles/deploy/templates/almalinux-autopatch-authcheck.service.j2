@@ -1,0 +1,16 @@
+[Unit]
+Description=Autopatch agent Claude Code auth probe
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# HOME is needed for the Slack token at ~/.almalinux-debranding-slack/token
+Environment="HOME={{ deploy_home_directory }}"
+Environment="AGENT_IMAGE={{ deploy_agent_image }}"
+Environment="AGENT_AUTH_VOLUME={{ deploy_agent_auth_volume }}"
+WorkingDirectory={{ deploy_source_path }}/src
+ExecStart=/usr/bin/python3 {{ deploy_source_path }}/src/agent_orchestrator.py --check-auth
+# Must outlast the probe's own 120s timeout, or systemd kills it first and the
+# run looks like a failure rather than a verdict.
+TimeoutStartSec=180

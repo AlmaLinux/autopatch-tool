@@ -33,6 +33,37 @@ def success_message(package_name:str, branch: str):
         text=message
     )
 
+def agent_auth_failed_message(
+    auth_volume: str,
+    image: str,
+    package: str | None = None,
+    branch: str | None = None,
+):
+    """Report that the agent's stored Claude Code session no longer works.
+
+    Kept separate from agent_result_message() because this is not one package
+    failing to be fixed — it blocks every further agent run until a human
+    re-authenticates, so the message always spells out how.
+    """
+    if package and branch:
+        header = (
+            f"Autopatch agent could not authenticate, so `{package}` on "
+            f"`{branch}` was left unfixed."
+        )
+    else:
+        header = "Autopatch agent could not authenticate."
+    message = (
+        f"{header}\n"
+        "The stored Claude Code session is no longer valid, and every agent "
+        "run will fail until it is renewed. On the autopatch host run:\n"
+        f"```podman run -it -v {auth_volume}:/home/agent/.claude "
+        f"--entrypoint claude {image} login```"
+    )
+    client.chat_postMessage(
+        channel=CHAT_NAME,
+        text=message
+    )
+
 def agent_result_message(
     package: str,
     branch: str,
