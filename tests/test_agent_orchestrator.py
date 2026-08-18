@@ -383,6 +383,13 @@ class TestOAuthToken:
         monkeypatch.setenv("AGENT_TOKEN_FILE", "~/custom/token.env")
         assert token_file_path() == os.path.expanduser("~/custom/token.env")
 
+    def test_default_path_is_readable_by_systemd(self, monkeypatch):
+        """systemd (PID 1) cannot read an EnvironmentFile out of /root, and the
+        "-" prefix makes that failure silent -- the service would simply run
+        without a token."""
+        monkeypatch.delenv("AGENT_TOKEN_FILE", raising=False)
+        assert token_file_path().startswith("/etc/")
+
 
 class TestAddTokenEnv:
 

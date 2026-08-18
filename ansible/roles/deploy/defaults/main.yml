@@ -51,5 +51,9 @@ deploy_agent_authcheck_schedule: "daily"
 # in vars/main.yml as an ansible-vault string; empty means the agent falls back
 # to a session stored in deploy_agent_auth_volume (interactive `claude login`).
 claude_code_oauth_token: ""
-deploy_claude_token_dir: "{{ deploy_home_directory }}/.claude-code"
-deploy_claude_token_file: "{{ deploy_claude_token_dir }}/token.env"
+# Must live under /etc/sysconfig: systemd (PID 1) cannot read an
+# EnvironmentFile from /root, and with the "-" prefix that failure is silent --
+# the service then starts with no token at all.
+deploy_claude_token_file: "/etc/sysconfig/almalinux-autopatch-claude"
+# Legacy location, removed on deploy so the secret does not linger unused.
+deploy_claude_token_dir_legacy: "{{ deploy_home_directory }}/.claude-code"

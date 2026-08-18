@@ -51,7 +51,7 @@ OAUTH_TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
 
 # The same file the systemd units load with EnvironmentFile=, so a hand-started
 # orchestrator authenticates exactly like the service does.
-DEFAULT_TOKEN_FILE = "~/.claude-code/token.env"
+DEFAULT_TOKEN_FILE = "/etc/sysconfig/almalinux-autopatch-claude"
 
 try:
     from autopatch.tools.logger import logger

@@ -76,7 +76,7 @@ needs to authenticate:
 | SSH key | no | yes (git clone/push) |
 | Slack token | no | yes (from `~/.almalinux-debranding-slack/token`) |
 | Gitea token | no | yes (opens the fix PR) |
-| Claude Code auth | `CLAUDE_CODE_OAUTH_TOKEN`, or the auth volume as fallback | token stored at `~/.claude-code/token.env` (0600) |
+| Claude Code auth | `CLAUDE_CODE_OAUTH_TOKEN`, or the auth volume as fallback | token stored at `/etc/sysconfig/almalinux-autopatch-claude` (0600) |
 
 The token is passed to podman by name (`-e CLAUDE_CODE_OAUTH_TOKEN`), never as
 `-e VAR=value`, so it does not appear in `ps` output. Git operations go over SSH
@@ -203,7 +203,7 @@ Encrypt the printed `sk-ant-oat01-…` value and put it into
 ansible-vault encrypt_string 'sk-ant-oat01-...' --name claude_code_oauth_token
 ```
 
-The role writes it to `~/.claude-code/token.env` (0600) on the host, both
+The role writes it to `/etc/sysconfig/almalinux-autopatch-claude` (0600) on the host, both
 systemd units load it with `EnvironmentFile=`, and the orchestrator forwards it
 into every agent container. Nothing else is needed — no interactive login, no
 session in the volume.
@@ -246,7 +246,7 @@ cat > /tmp/agent-test/error_context.json <<'EOF'
 EOF
 
 # Run the container (the token is taken from the shell environment)
-set -a; . ~/.claude-code/token.env; set +a
+set -a; . /etc/sysconfig/almalinux-autopatch-claude; set +a
 podman run --rm \
   -e PACKAGE=httpd \
   -e BRANCH=c9 \

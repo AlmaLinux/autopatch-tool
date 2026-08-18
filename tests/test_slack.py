@@ -65,14 +65,14 @@ class TestAgentAuthFailedMessage:
             image="localhost/autopatch-agent:latest",
             package="glibc",
             branch="c10s",
-            token_file="/root/.claude-code/token.env",
+            token_file="/etc/sysconfig/almalinux-autopatch-claude",
         )
 
         text = mock_post.call_args[1]["text"]
         assert "glibc" in text
         assert "claude setup-token" in text
         assert "claude_code_oauth_token" in text
-        assert "/root/.claude-code/token.env" in text
+        assert "/etc/sysconfig/almalinux-autopatch-claude" in text
         # The volume login is the wrong instruction here.
         assert "podman run -it" not in text
 

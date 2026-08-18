@@ -80,15 +80,15 @@ Endpoints (both require the `X-Gitea-Signature` HMAC header, verified against
 | `AGENT_IMAGE` | agent | Container image (default `localhost/autopatch-agent:latest`). |
 | `AGENT_AUTH_VOLUME` | agent | Named volume with the Claude Code config (and the session, when no token is used). |
 | `CLAUDE_CODE_OAUTH_TOKEN` | agent | Long-lived `claude setup-token` token, forwarded into the agent container. |
-| `AGENT_TOKEN_FILE` | agent | Where to read that token from when it is not in the environment (default `~/.claude-code/token.env`). |
+| `AGENT_TOKEN_FILE` | agent | Where to read that token from when it is not in the environment (default `/etc/sysconfig/almalinux-autopatch-claude`). |
 | `AGENT_TIMEOUT` | agent | Container timeout in seconds (default 600). |
 | `AGENT_LOG_PATH` | agent | Log directory (default `/var/log/autopatch`). |
 | `GITEA_TOKEN` | agent | Token used to open the fix PR via the Gitea API. |
 
 Credentials read from files: immudb/CAS at `~/.cas/credentials`; Slack token at
 `~/.almalinux-debranding-slack/token`; Claude Code token at
-`~/.claude-code/token.env` (loaded by the systemd units via `EnvironmentFile=`,
-so it never appears in a unit file or in `systemctl cat`).
+`/etc/sysconfig/almalinux-autopatch-claude` (loaded by the systemd units via
+`EnvironmentFile=`, so it never appears in a unit file or in `systemctl cat`).
 
 ## Ansible deployment
 
@@ -134,7 +134,7 @@ this) and Claude Code must have credentials.
 
 **Token (default).** Generate a long-lived token once on a machine with a Claude
 subscription and store it in the vault; the role deploys it to
-`~/.claude-code/token.env` and the orchestrator forwards it into every container:
+`/etc/sysconfig/almalinux-autopatch-claude` and the orchestrator forwards it into every container:
 
 ```bash
 claude setup-token
