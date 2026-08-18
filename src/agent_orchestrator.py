@@ -6,8 +6,9 @@ pipeline: clone repos via SSH, run the container (blocking), read the
 result, commit and push the fix branch (SSH), write JSONL log, send
 Slack notification via the existing tools.slack module.
 
-The container itself has ZERO credentials — only the Claude Code auth
-volume and the mounted work directory.
+The container gets no autopatch credentials — only the Claude Code
+authentication (a `claude setup-token` token, or the auth volume as a
+fallback) and the mounted work directory.
 """
 
 from __future__ import annotations
@@ -42,6 +43,15 @@ AUTH_FAILURE_MARKERS = (
     "please run /login",
     "invalid api key",
 )
+
+# Long-lived token produced by `claude setup-token`. Claude Code reads it from
+# the environment, so with it the container needs neither an interactive
+# `claude login` nor a session in the auth volume.
+OAUTH_TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
+
+# The same file the systemd units load with EnvironmentFile=, so a hand-started
+# orchestrator authenticates exactly like the service does.
+DEFAULT_TOKEN_FILE = "~/.claude-code/token.env"
 
 try:
     from autopatch.tools.logger import logger
@@ -78,6 +88,51 @@ except ImportError:
         import tools.slack as tools_slack
     except ImportError:
         tools_slack = None
+
+
+def token_file_path() -> str:
+    """Absolute path of the file holding the setup-token value."""
+    return os.path.expanduser(
+        os.environ.get("AGENT_TOKEN_FILE") or DEFAULT_TOKEN_FILE
+    )
+
+
+def oauth_token() -> str | None:
+    """The setup-token value, or None when only the volume session exists.
+
+    Environment first — that is how systemd passes it in — with the file as a
+    fallback for manual runs.
+    """
+    token = os.environ.get(OAUTH_TOKEN_ENV, "").strip()
+    if token:
+        return token
+
+    try:
+        with open(token_file_path(), encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return None
+
+    for line in lines:
+        line = line.strip()
+        if line.startswith(f"{OAUTH_TOKEN_ENV}="):
+            return line.split("=", 1)[1].strip().strip("\"'") or None
+    return None
+
+
+def _add_token_env(cmd: list[str]) -> dict[str, str]:
+    """Append the token pass-through to cmd, return the env to run it with.
+
+    The token is passed by name only (`-e VAR`, not `-e VAR=value`): the value
+    would otherwise be visible in `ps` output and in podman's own logging.
+    """
+    env = dict(os.environ)
+    token = oauth_token()
+    if token:
+        cmd += ["-e", OAUTH_TOKEN_ENV]
+        env[OAUTH_TOKEN_ENV] = token
+    return env
+
 
 
 def _clone_repos(work_dir: str, package: str) -> bool:
@@ -258,6 +313,7 @@ def _run_container(
                 "-v", f"{ref_dir}:/workspace/autopatch_ref/{package}:ro,z",
             ]
 
+    run_env = _add_token_env(cmd)
     cmd.append(image)
 
     log_dir = os.path.join(AGENT_LOG_DIR, package)
@@ -271,6 +327,7 @@ def _run_container(
 
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env=run_env,
     )
 
     with open(stdout_path, "w", encoding="utf-8") as out_f, \
@@ -331,6 +388,9 @@ def check_auth(
         "podman", "run", "--rm",
         "--security-opt", "label=disable",
         "-v", f"{auth_volume}:/home/agent/.claude",
+    ]
+    run_env = _add_token_env(cmd)
+    cmd += [
         "--entrypoint", "claude",
         image,
         "-p", "Reply with the single word OK.",
@@ -339,6 +399,7 @@ def check_auth(
     try:
         proc = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout,
+            env=run_env,
         )
     except subprocess.TimeoutExpired:
         logger.error("Auth probe timed out after %ds", timeout)
@@ -657,12 +718,17 @@ def _send_auth_slack(
         logger.warning("tools.slack not available, skipping notification")
         return
 
+    # Which credential is in use decides what a human has to do about it:
+    # renew the token, or log in against the volume.
+    token_file = token_file_path() if oauth_token() else None
+
     try:
         tools_slack.agent_auth_failed_message(
             auth_volume=auth_volume,
             image=image,
             package=package,
             branch=branch,
+            token_file=token_file,
         )
     except Exception as exc:
         logger.error("Slack notification failed: %s", exc)

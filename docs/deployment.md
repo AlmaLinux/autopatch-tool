@@ -78,13 +78,17 @@ Endpoints (both require the `X-Gitea-Signature` HMAC header, verified against
 | `AGENT_ENABLED` | webserv | `true` enables the AI recovery agent on failure. |
 | `AGENT_DRY_RUN` | agent | `true` = analyze only, no branch/PR. |
 | `AGENT_IMAGE` | agent | Container image (default `localhost/autopatch-agent:latest`). |
-| `AGENT_AUTH_VOLUME` | agent | Named volume with the Claude Code OAuth session. |
+| `AGENT_AUTH_VOLUME` | agent | Named volume with the Claude Code config (and the session, when no token is used). |
+| `CLAUDE_CODE_OAUTH_TOKEN` | agent | Long-lived `claude setup-token` token, forwarded into the agent container. |
+| `AGENT_TOKEN_FILE` | agent | Where to read that token from when it is not in the environment (default `~/.claude-code/token.env`). |
 | `AGENT_TIMEOUT` | agent | Container timeout in seconds (default 600). |
 | `AGENT_LOG_PATH` | agent | Log directory (default `/var/log/autopatch`). |
 | `GITEA_TOKEN` | agent | Token used to open the fix PR via the Gitea API. |
 
 Credentials read from files: immudb/CAS at `~/.cas/credentials`; Slack token at
-`~/.almalinux-debranding-slack/token`.
+`~/.almalinux-debranding-slack/token`; Claude Code token at
+`~/.claude-code/token.env` (loaded by the systemd units via `EnvironmentFile=`,
+so it never appears in a unit file or in `systemctl cat`).
 
 ## Ansible deployment
 
@@ -94,7 +98,10 @@ service.
 
 ### 1. Define secrets
 
-Set the following in `ansible/roles/deploy/vars/main.yml`
+Set the following in `ansible/roles/deploy/vars/main.yml` (all as vaulted
+strings): the CAS/immudb credentials, the Slack token, the webhook `AUTH_KEY`,
+the git.almalinux.org SSH key pair, the Gitea token, and — when the agent is
+enabled — `claude_code_oauth_token` from `claude setup-token`.
 
 ### 2. Inventory
 
@@ -122,14 +129,27 @@ above. Agent variables are only set when `deploy_agent_enabled` is true.
 
 ## AI agent container
 
-When the agent is enabled, the recovery container must be built and Claude Code
-authorized once:
+When the agent is enabled, the recovery container must be built (Ansible does
+this) and Claude Code must have credentials.
+
+**Token (default).** Generate a long-lived token once on a machine with a Claude
+subscription and store it in the vault; the role deploys it to
+`~/.claude-code/token.env` and the orchestrator forwards it into every container:
 
 ```bash
-# build the image
+claude setup-token
+ansible-vault encrypt_string 'sk-ant-oat01-...' --name claude_code_oauth_token
+```
+
+Paste the result into `ansible/roles/deploy/vars/main.yml` and re-deploy. Renew
+the same way when the token expires.
+
+**Fallback.** With `claude_code_oauth_token` left empty, the agent uses a
+session stored in the named volume by a one-time interactive login:
+
+```bash
 podman build -t autopatch-agent -f agent/Containerfile .
 
-# one-time OAuth login (session persisted in the named volume)
 podman run -it \
   -v claude-auth:/home/agent/.claude \
   --entrypoint claude \
@@ -139,15 +159,16 @@ podman run -it \
 
 ### Auth monitoring
 
-The stored OAuth session is short-lived and refreshed silently on use, so its
-expiry timestamp says nothing about health — only a real request tells a
-session that still refreshes apart from one that is dead. Two mechanisms cover
-this:
+Both credentials expire: a setup-token eventually runs out (or is revoked), and
+a stored session is short-lived and refreshed silently on use, so no local
+timestamp says anything about health — only a real request tells a working
+credential apart from a dead one. Two mechanisms cover this:
 
 - **On failure** — when a run fails to authenticate, the Slack message names it
-  as an auth problem and includes the re-login command, instead of reporting a
-  generic "agent failed to fix" (the container writes a fallback result even
-  when Claude Code never ran, which otherwise hides the cause).
+  as an auth problem and spells out the fix for the credential actually in use
+  (`claude setup-token` and a re-deploy, or the volume re-login), instead of
+  reporting a generic "agent failed to fix" (the container writes a fallback
+  result even when Claude Code never ran, which otherwise hides the cause).
 - **Periodically** — `almalinux-autopatch-authcheck.timer` (deployed with the
   agent, `deploy_agent_authcheck_schedule`, daily by default) sends the
   smallest possible request through the container and alerts Slack if the
@@ -204,8 +225,9 @@ tarball (see the `--exclude` flags in the `Makefile`).
   per-run logs under `/var/log/autopatch/agent/` and an append-only
   `agent_runs.jsonl`.
 - **Notifications:** success/failure and agent results are posted to the
-  `almalinux-debranding` Slack channel. A dead Claude Code session is reported
-  separately, with the re-login command — see [Auth monitoring](#auth-monitoring).
+  `almalinux-debranding` Slack channel. Dead Claude Code credentials are
+  reported separately, with the renewal command — see
+  [Auth monitoring](#auth-monitoring).
 - **Idempotency:** each run resets the AlmaLinux branch to the fresh upstream
   import before applying the config, so re-running is safe.
 - **Skipping:** pushes to already-AlmaLinux branches (`a*`) are ignored by

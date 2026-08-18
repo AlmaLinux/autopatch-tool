@@ -38,12 +38,17 @@ def agent_auth_failed_message(
     image: str,
     package: str | None = None,
     branch: str | None = None,
+    token_file: str | None = None,
 ):
-    """Report that the agent's stored Claude Code session no longer works.
+    """Report that the agent's Claude Code credentials no longer work.
 
     Kept separate from agent_result_message() because this is not one package
     failing to be fixed — it blocks every further agent run until a human
     re-authenticates, so the message always spells out how.
+
+    token_file is set when the agent authenticates with a `claude setup-token`
+    token; renewing that is a different procedure from re-logging into the
+    stored session, so the instructions must not be generic.
     """
     if package and branch:
         header = (
@@ -52,13 +57,27 @@ def agent_auth_failed_message(
         )
     else:
         header = "Autopatch agent could not authenticate."
-    message = (
-        f"{header}\n"
-        "The stored Claude Code session is no longer valid, and every agent "
-        "run will fail until it is renewed. On the autopatch host run:\n"
-        f"```podman run -it -v {auth_volume}:/home/agent/.claude "
-        f"--entrypoint claude {image} login```"
-    )
+
+    if token_file:
+        how_to_fix = (
+            "The long-lived Claude Code token is no longer valid, and every "
+            "agent run will fail until it is renewed. Generate a new one on a "
+            "workstation with a Claude subscription:\n"
+            "```claude setup-token```\n"
+            "then put it into the vaulted `claude_code_oauth_token` and "
+            "re-deploy (or write it to "
+            f"`{token_file}` on the host and restart "
+            "`almalinux-autopatch.service`)."
+        )
+    else:
+        how_to_fix = (
+            "The stored Claude Code session is no longer valid, and every agent "
+            "run will fail until it is renewed. On the autopatch host run:\n"
+            f"```podman run -it -v {auth_volume}:/home/agent/.claude "
+            f"--entrypoint claude {image} login```"
+        )
+
+    message = f"{header}\n{how_to_fix}"
     client.chat_postMessage(
         channel=CHAT_NAME,
         text=message

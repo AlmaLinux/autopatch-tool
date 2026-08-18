@@ -27,7 +27,14 @@
   changed_when: volume_create.rc == 0
   failed_when: false
 
-- name: Check if Claude Code is authenticated
+- name: Check for the Claude Code OAuth token
+  ansible.builtin.stat:
+    path: "{{ deploy_claude_token_file }}"
+  register: claude_token_file
+
+# Only relevant without a token: then the agent still depends on a session
+# stored in the volume by an interactive login.
+- name: Check for a stored Claude Code session
   command: >
     podman run --rm
     --entrypoint test
@@ -37,14 +44,21 @@
   register: auth_check
   changed_when: false
   failed_when: false
+  when: not claude_token_file.stat.exists
 
-- name: Warn if Claude Code auth is missing
+- name: Warn if the agent has no Claude Code credentials
   debug:
     msg: >
-      Claude Code is NOT authenticated. Run manually on the server:
+      Claude Code is NOT authenticated: no token at
+      {{ deploy_claude_token_file }} and no stored session in the
+      {{ deploy_agent_auth_volume }} volume. Either set the vaulted
+      claude_code_oauth_token from `claude setup-token` and re-deploy, or log
+      in manually on the server:
       podman run -it -v {{ deploy_agent_auth_volume }}:/home/agent/.claude
       --entrypoint claude {{ deploy_agent_image }} login
-  when: auth_check.rc != 0
+  when:
+    - not claude_token_file.stat.exists
+    - auth_check.rc | default(1) != 0
 
 # The check above only proves the credentials file exists. A session can stop
 # refreshing while the file stays in place, which is invisible until the next

@@ -23,7 +23,7 @@ configurations when they fail.
 │    7. cleanup                                                   │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
-│  CONTAINER (isolated, no credentials)                           │
+│  CONTAINER (isolated, Claude Code credential only)              │
 │                                                                 │
 │  entrypoint.sh                                                  │
 │    └─ claude --agent autopatch-fixer                            │
@@ -38,7 +38,9 @@ configurations when they fail.
 │    /workspace/rpms/{pkg}/       ← git repo (spec file)         │
 │    /workspace/error_context.json ← read-only                   │
 │    /workspace/result/           ← agent writes result here     │
-│    /home/agent/.claude          ← OAuth session (named volume) │
+│    /home/agent/.claude          ← Claude Code config (volume)  │
+│  Environment:                                                   │
+│    CLAUDE_CODE_OAUTH_TOKEN      ← setup-token (from the host)   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,15 +68,19 @@ agent/
 
 ## Security
 
-The container has **no credentials whatsoever**:
+The container gets no autopatch credentials — only what Claude Code itself
+needs to authenticate:
 
 | Resource | Container | Host |
 |----------|-----------|------|
 | SSH key | no | yes (git clone/push) |
 | Slack token | no | yes (from `~/.almalinux-debranding-slack/token`) |
-| Claude OAuth | volume mount (session) | — |
+| Gitea token | no | yes (opens the fix PR) |
+| Claude Code auth | `CLAUDE_CODE_OAUTH_TOKEN`, or the auth volume as fallback | token stored at `~/.claude-code/token.env` (0600) |
 
-No API tokens are used. Git operations go over SSH only.
+The token is passed to podman by name (`-e CLAUDE_CODE_OAUTH_TOKEN`), never as
+`-e VAR=value`, so it does not appear in `ps` output. Git operations go over SSH
+only.
 
 Additional restrictions in `.claude/settings.json`:
 - **deny**: `git push`, `git remote`, `curl`, `rm -rf`, `sudo`
@@ -165,7 +171,8 @@ Every run is recorded in `/var/log/autopatch/agent_runs.jsonl`:
 - Podman (already present on AlmaLinux by default)
 - An SSH key with write access to `autopatch/*` and `rpms/*` on git.almalinux.org
 - A Slack token at `~/.almalinux-debranding-slack/token` (already set up for the main service)
-- A one-time Claude Code login (OAuth)
+- Claude Code authentication: a long-lived token from `claude setup-token`
+  (deployed by Ansible), or a one-time interactive `claude login`
 
 ### Ansible
 
@@ -178,11 +185,34 @@ deploy_agent_image: "localhost/autopatch-agent:latest"
 deploy_agent_auth_volume: "claude-auth"
 ```
 
-No extra tokens are needed — the SSH key and Slack token are already configured.
+The SSH key and Slack token are already configured; the only agent-specific
+secret is the Claude Code token below.
 
-### Initial Claude Code setup
+### Claude Code authentication
 
-After the first deploy, Claude Code must be authenticated once:
+Generate a long-lived token once, on any machine with a Claude subscription:
+
+```bash
+claude setup-token
+```
+
+Encrypt the printed `sk-ant-oat01-…` value and put it into
+`ansible/roles/deploy/vars/main.yml`:
+
+```bash
+ansible-vault encrypt_string 'sk-ant-oat01-...' --name claude_code_oauth_token
+```
+
+The role writes it to `~/.claude-code/token.env` (0600) on the host, both
+systemd units load it with `EnvironmentFile=`, and the orchestrator forwards it
+into every agent container. Nothing else is needed — no interactive login, no
+session in the volume.
+
+Renew it the same way when it expires: replace the vaulted value and re-deploy.
+
+**Fallback.** With `claude_code_oauth_token` empty, the agent still uses a
+session stored in the `claude-auth` volume, created by a one-time login that
+survives image rebuilds:
 
 ```bash
 podman run -it \
@@ -191,8 +221,6 @@ podman run -it \
   localhost/autopatch-agent:latest \
   login
 ```
-
-The session is stored in the `claude-auth` named volume and survives image rebuilds.
 
 ### Manual image build
 
@@ -217,11 +245,13 @@ cat > /tmp/agent-test/error_context.json <<'EOF'
 }
 EOF
 
-# Run the container
+# Run the container (the token is taken from the shell environment)
+set -a; . ~/.claude-code/token.env; set +a
 podman run --rm \
   -e PACKAGE=httpd \
   -e BRANCH=c9 \
   -e DRY_RUN=true \
+  -e CLAUDE_CODE_OAUTH_TOKEN \
   -v claude-auth:/home/agent/.claude \
   -v /tmp/agent-test/autopatch/httpd:/workspace/autopatch/httpd \
   -v /tmp/agent-test/rpms/httpd:/workspace/rpms/httpd \

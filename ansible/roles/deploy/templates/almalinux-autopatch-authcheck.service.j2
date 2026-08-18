@@ -9,6 +9,9 @@ Type=oneshot
 Environment="HOME={{ deploy_home_directory }}"
 Environment="AGENT_IMAGE={{ deploy_agent_image }}"
 Environment="AGENT_AUTH_VOLUME={{ deploy_agent_auth_volume }}"
+# The probe must authenticate the same way a real run does, so it needs the
+# token too. Optional ("-") when only the auth volume is in use.
+EnvironmentFile=-{{ deploy_claude_token_file }}
 WorkingDirectory={{ deploy_source_path }}/src
 ExecStart=/usr/bin/python3 {{ deploy_source_path }}/src/agent_orchestrator.py --check-auth
 # Must outlast the probe's own 120s timeout, or systemd kills it first and the

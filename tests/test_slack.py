@@ -52,3 +52,39 @@ class TestAgentResultMessage:
         text = mock_post.call_args[1]["text"]
         assert "Create PR:" in text
         assert "compare/a9...agent-fix/a9-1" in text
+
+
+class TestAgentAuthFailedMessage:
+    """The alert must name the remedy for the credential actually in use."""
+
+    def test_token_auth_asks_for_a_new_setup_token(self, mocker):
+        mock_post = _capture(mocker)
+
+        slack.agent_auth_failed_message(
+            auth_volume="claude-auth",
+            image="localhost/autopatch-agent:latest",
+            package="glibc",
+            branch="c10s",
+            token_file="/root/.claude-code/token.env",
+        )
+
+        text = mock_post.call_args[1]["text"]
+        assert "glibc" in text
+        assert "claude setup-token" in text
+        assert "claude_code_oauth_token" in text
+        assert "/root/.claude-code/token.env" in text
+        # The volume login is the wrong instruction here.
+        assert "podman run -it" not in text
+
+    def test_volume_session_asks_for_a_relogin(self, mocker):
+        mock_post = _capture(mocker)
+
+        slack.agent_auth_failed_message(
+            auth_volume="claude-auth",
+            image="localhost/autopatch-agent:latest",
+        )
+
+        text = mock_post.call_args[1]["text"]
+        assert "podman run -it -v claude-auth:/home/agent/.claude" in text
+        assert "login" in text
+        assert "setup-token" not in text

@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -151,3 +152,72 @@ class TestTemplatesAndSkills:
         """PR creation happens in the orchestrator, not inside the container."""
         content = Path("agent/.claude/agents/autopatch-fixer.md").read_text()
         assert "gitea" not in content.lower()
+
+
+class TestEntrypointAuthGate:
+    """The container must accept a setup-token, or a stored session, or refuse.
+
+    Only the credential gate is exercised: the script is cut at the banner that
+    follows it, so no Claude Code run or /workspace layout is needed.
+    """
+
+    MARKER = 'echo "=== Autopatch Agent:'
+
+    def _gate(self, tmp_path, token=None, volume=""):
+        script = Path("agent/entrypoint.sh").read_text()
+        head, sep, _ = script.partition(self.MARKER)
+        assert sep, "entrypoint.sh banner moved -- update MARKER"
+
+        gate = tmp_path / "gate.sh"
+        gate.write_text(head)
+
+        home = tmp_path / "home"
+        (home / ".claude").mkdir(parents=True)
+        if volume == "session":
+            (home / ".claude" / ".credentials.json").write_text("{}")
+        elif volume == "backup":
+            backups = home / ".claude" / "backups"
+            backups.mkdir()
+            (backups / ".claude.json.backup.1").write_text('{"fromBackup": true}')
+
+        env = {
+            "HOME": str(home),
+            "PATH": os.environ["PATH"],
+            "PACKAGE": "httpd",
+            "BRANCH": "c9",
+            "CONFIG_BRANCH": "a9",
+        }
+        if token:
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = token
+
+        proc = subprocess.run(
+            ["bash", str(gate)], env=env, capture_output=True, text=True,
+        )
+        return proc, home / ".claude.json"
+
+    def test_token_works_with_an_empty_auth_volume(self, tmp_path):
+        proc, claude_json = self._gate(tmp_path, token="sk-ant-oat01-test")
+
+        assert proc.returncode == 0, proc.stderr
+        # A first launch would otherwise try to run interactive onboarding.
+        assert "hasCompletedOnboarding" in claude_json.read_text()
+
+    def test_stored_session_still_works_without_a_token(self, tmp_path):
+        proc, _ = self._gate(tmp_path, volume="session")
+        assert proc.returncode == 0, proc.stderr
+
+    def test_refuses_when_there_is_no_credential_at_all(self, tmp_path):
+        proc, _ = self._gate(tmp_path)
+
+        assert proc.returncode == 1
+        assert "CLAUDE_CODE_OAUTH_TOKEN" in proc.stderr
+
+    def test_backed_up_config_wins_over_the_generated_one(self, tmp_path):
+        """A volume that carries settings must not be overwritten."""
+        proc, claude_json = self._gate(
+            tmp_path, token="sk-ant-oat01-test", volume="backup",
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        assert "fromBackup" in claude_json.read_text()
+

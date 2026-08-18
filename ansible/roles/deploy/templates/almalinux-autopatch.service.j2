@@ -13,6 +13,10 @@ Environment="AGENT_IMAGE={{ deploy_agent_image }}"
 Environment="AGENT_AUTH_VOLUME={{ deploy_agent_auth_volume }}"
 Environment="AGENT_TIMEOUT={{ deploy_agent_timeout }}"
 Environment="GITEA_TOKEN={{ gitea_token }}"
+# CLAUDE_CODE_OAUTH_TOKEN for the agent container. Loaded from a 0600 file so it
+# stays out of the unit and out of `systemctl cat`; the leading "-" keeps the
+# service starting when no token is configured (auth volume fallback).
+EnvironmentFile=-{{ deploy_claude_token_file }}
 {% endif %}
 Type=simple
 WorkingDirectory={{ deploy_source_path }}/src

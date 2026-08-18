@@ -9,16 +9,29 @@ for var in PACKAGE BRANCH CONFIG_BRANCH; do
 done
 
 CLAUDE_DIR="$HOME/.claude"
-if [ ! -d "$CLAUDE_DIR" ] || [ -z "$(ls -A "$CLAUDE_DIR" 2>/dev/null)" ]; then
-    echo "ERROR: Claude Code auth not found. Run the login command first." >&2
+CLAUDE_JSON="$HOME/.claude.json"
+
+# Two ways to authenticate: a long-lived token from `claude setup-token` passed
+# in by the orchestrator, or a session stored in the mounted auth volume. The
+# token wins, and needs no stored session at all.
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    mkdir -p "$CLAUDE_DIR"
+elif [ ! -d "$CLAUDE_DIR" ] || [ -z "$(ls -A "$CLAUDE_DIR" 2>/dev/null)" ]; then
+    echo "ERROR: Claude Code auth not found: no CLAUDE_CODE_OAUTH_TOKEN and no" >&2
+    echo "stored session. Set the token or run the login command first." >&2
     exit 1
 fi
 
-CLAUDE_JSON="$HOME/.claude.json"
 if [ ! -f "$CLAUDE_JSON" ]; then
-    BACKUP=$(find "$CLAUDE_DIR/backups" -name '.claude.json.backup.*' -type f 2>/dev/null | sort | tail -1)
+    # find exits non-zero when the volume has no backups/ directory at all,
+    # which under `set -e -o pipefail` would kill the run before it started.
+    BACKUP=$(find "$CLAUDE_DIR/backups" -name '.claude.json.backup.*' -type f 2>/dev/null | sort | tail -1 || true)
     if [ -n "$BACKUP" ]; then
         cp "$BACKUP" "$CLAUDE_JSON"
+    elif [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+        # A token-only container starts from an empty volume, where Claude Code
+        # would otherwise treat this as a first launch.
+        echo '{"hasCompletedOnboarding": true}' > "$CLAUDE_JSON"
     fi
 fi
 
