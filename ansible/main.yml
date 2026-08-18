@@ -1,6 +1,6 @@
 ---
 
-- name: Deploy the AlmaLinux GIT updater
+- name: Deploy the AlmaLinux autopatch tool
   hosts: all
   become: yes
   roles:
