@@ -1,6 +1,11 @@
 import pytest
 
-from src.tools.rpm import extract_el_version, get_rpmspec_definitions
+from src.tools.rpm import (
+    DirectiveType,
+    apply_patch,
+    extract_el_version,
+    get_rpmspec_definitions,
+)
 
 
 @pytest.mark.parametrize(
@@ -47,3 +52,32 @@ def test_get_rpmspec_definitions_default():
 def test_get_rpmspec_definitions_custom():
     definitions = get_rpmspec_definitions("10")
     assert definitions["rhel"] == "10"
+
+
+@pytest.mark.parametrize(
+    "patch_number, insert_almalinux, expected",
+    [
+        (3, True, ["# AlmaLinux Patch", "Patch3: fix.patch"]),
+        (-1, True, ["# AlmaLinux Patch", "Patch1: fix.patch"]),
+        (3, False, ["Patch3: fix.patch"]),
+    ],
+)
+def test_apply_patch_empty_patches_file(patch_number, insert_almalinux, expected):
+    # Upstream may ship the *.patches file empty (pesign 117 in c10s).
+    patches = []
+    apply_patch(
+        patches, "fix.patch", DirectiveType.PATCH, "pesign", True,
+        patch_number, insert_almalinux,
+    )
+    assert patches == expected
+
+
+def test_apply_patch_patches_file_appends_after_last_patch():
+    patches = ["Patch0001: 0001-a.patch", "Patch0002: 0002-b.patch"]
+    apply_patch(patches, "fix.patch", DirectiveType.PATCH, "pesign", True, 3)
+    assert patches == [
+        "Patch0001: 0001-a.patch",
+        "Patch0002: 0002-b.patch",
+        "\n# AlmaLinux Patch",
+        "Patch3: fix.patch",
+    ]

@@ -498,6 +498,19 @@ def apply_patch(
     Patches are added after the last patch in the "AlmaLinux patches" block.
     If no such block exists, it will be created after the last patch directive.
     """
+    if (
+        patches_file and
+        directive_type == DirectiveType.PATCH and
+        not any(re.match(r"^Patch[0-9]*:", line) for line in spec)
+    ):
+        # The *.patches file is empty, so there is no PatchN: line to anchor on.
+        # It holds only patch declarations (applied via %{patches}), so append.
+        if insert_almalinux:
+            spec.append(f"# AlmaLinux {directive_type.value}")
+        new_patch_number = str(patch_number) if patch_number != -1 else "1"
+        spec.append(f"{directive_type.value}{new_patch_number}: {patch_name}")
+        return
+
     spec.reverse()
     last_patch_number, last_patch_index, patches_without_numbers = find_last_directive(
         spec, directive_type

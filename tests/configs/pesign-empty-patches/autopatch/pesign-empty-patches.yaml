@@ -1,0 +1,15 @@
+actions:
+
+  - modify_release:
+    - suffix: ".alma.1"
+      enabled: true
+
+  - changelog_entry:
+      - name: "Andrei Lukoshko"
+        email: "alukoshko@almalinux.org"
+        line:
+          - "Add versioned x86_64 arches support"
+  - add_files:
+      - type: "patch"
+        name: "0003-Add-versioned-x86_64-arches-support.patch"
+        number: 0003

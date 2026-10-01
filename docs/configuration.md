@@ -279,6 +279,12 @@ Autopatch detects the patch-apply style used by the spec (classic `%patchN`,
 inserts the new directive in the matching style and location. If the package
 uses a `SPECS/` + `SOURCES/` layout, added files land in `SOURCES/`.
 
+For packages that keep their `PatchN:` lines in a separate `*.patches` file
+pulled in via `%include` (grub2, pesign, shim), the `PatchN:` line goes into
+that file instead of the spec, and no apply line is added (the spec applies
+everything with `git am %{patches}`). If upstream ships the `*.patches` file
+empty, the `# AlmaLinux Patch` block is simply written into it.
+
 ### `delete_files`
 
 Remove a file from the package. If the file is tracked in dist-git lookaside

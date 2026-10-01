@@ -4,7 +4,7 @@ import shutil
 import os
 from freezegun import freeze_time
 import difflib
-from src.actions_handler import ConfigReader, AddFilesAction, DeleteFilesAction
+from src.actions_handler import ConfigReader, AddFilesAction, DeleteFilesAction, read_file_data
 
 RESULTS_DIR = Path(__file__).parent / "results"
 CONFIGS_DIR = Path(__file__).parent / "configs"
@@ -121,3 +121,16 @@ def test_apply_actions(case_name, yaml_file, spec_input, expected_output):
     compare_files(sources_dir, result_case_dir, result_case_dir)
 
     result_spec.unlink()
+
+
+def test_read_file_data_allows_empty_patches_file(tmp_path):
+    patches_file = tmp_path / "pesign.patches"
+    patches_file.write_text("")
+    assert read_file_data(patches_file) == []
+
+
+def test_read_file_data_rejects_empty_spec(tmp_path):
+    spec_file = tmp_path / "pesign.spec"
+    spec_file.write_text("")
+    with pytest.raises(ValueError, match="File is empty"):
+        read_file_data(spec_file)

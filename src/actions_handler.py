@@ -61,7 +61,9 @@ def read_file_data(path_to_file: Path) -> list[str]:
     with open(path_to_file, "r", encoding="utf-8") as f:
         info = [line.rstrip("\n") for line in f.readlines()]
 
-    if info is None or not info:
+    # A separate *.patches file (grub2, pesign, shim) may legitimately be
+    # shipped empty when upstream carries no downstream patches
+    if not info and Path(path_to_file).suffix != ".patches":
         raise ValueError("File is empty")
     return info
 
@@ -756,12 +758,11 @@ class AddFilesAction(BaseAction):
                 if is_patches_file:
                     entry.target = entry.get_file_name(package_path, "*.patches").name
 
-            spec_file_path = entry.get_target_file_name(package_path)
-            spec = read_file_data(spec_file_path)
-
             logger.info(f"Adding file: {entry}")
 
             if entry.modify_spec:
+                spec_file_path = entry.get_target_file_name(package_path)
+                spec = read_file_data(spec_file_path)
                 tools_rpm.apply_patch(
                     spec,
                     entry.name,
@@ -772,9 +773,8 @@ class AddFilesAction(BaseAction):
                     entry.insert_almalinux_line,
                     entry.no_backup
                 )
+                write_file_data(spec_file_path, spec)
             self.copy_file_to_package(package_path, entry.name)
-
-            write_file_data(spec_file_path, spec)
 
 
 class DeleteLineEntry(BaseEntry):
