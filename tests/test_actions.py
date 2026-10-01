@@ -47,6 +47,23 @@ def create_file(file_to_create: Path):
     with open(file_to_create, "w") as f:
         f.write(" ")
 
+def create_placeholder(file_to_create: Path):
+    """Create a placeholder unless the file already exists.
+
+    Returns the paths the caller must remove afterwards: the placeholder and
+    any directories created for it (deepest first). Existing fixture files are
+    left untouched and are never scheduled for deletion.
+    """
+    if file_to_create.exists():
+        return []
+    created = [file_to_create]
+    parent = file_to_create.parent
+    while not parent.exists():
+        created.append(parent)
+        parent = parent.parent
+    create_file(file_to_create)
+    return created
+
 def delete_test_files(files_to_delete):
     for file in files_to_delete:
         if file.exists():
@@ -89,9 +106,8 @@ def process_actions(config, yaml_file, result_case_dir, case_name):
                 # For syslinux test, file should be created by script
                 if entry.name != "syslinux64.exe":
                     file_to_create = yaml_file.parent / "files" / entry.name
-                    files_to_delete.append(file_to_create)
+                    files_to_delete.extend(create_placeholder(file_to_create))
                     files_to_delete.append(result_case_dir / entry.name)
-                    create_file(file_to_create)
         elif isinstance(action, DeleteFilesAction):
             for entry in action.entries:
                 file_to_create = result_case_dir / entry.file_name
@@ -113,9 +129,10 @@ def test_apply_actions(case_name, yaml_file, spec_input, expected_output):
     config = ConfigReader(yaml_file)
     files_to_delete = process_actions(config, yaml_file, result_case_dir, case_name)
 
-    config.apply_actions(result_spec.parent)
-
-    delete_test_files(files_to_delete)
+    try:
+        config.apply_actions(result_spec.parent)
+    finally:
+        delete_test_files(files_to_delete)
 
     compare_file(expected_output, result_spec, result_case_dir)
     compare_files(sources_dir, result_case_dir, result_case_dir)
