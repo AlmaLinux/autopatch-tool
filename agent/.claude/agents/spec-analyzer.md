@@ -6,11 +6,11 @@ description: >
 tools: Read, Grep, Glob, Bash
 disallowedTools: Write, Edit
 permissionMode: plan
-model: sonnet
+model: claude-opus-5-5
 maxTurns: 15
 skills:
   - autopatch-config
-effort: medium
+effort: high
 ---
 
 You analyze RPM spec files and autopatch configs. You are invoked by

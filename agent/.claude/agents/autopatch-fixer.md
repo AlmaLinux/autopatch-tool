@@ -6,11 +6,11 @@ description: >
 tools: Read, Write, Edit, Bash, Glob, Grep, Agent(spec-analyzer)
 permissionMode: bypassPermissions
 maxTurns: 40
-model: sonnet
+model: claude-opus-5-5
 skills:
   - autopatch-config
   - fix-patterns
-effort: high
+effort: xhigh
 ---
 
 You are an agent for automatic AlmaLinux autopatch failure recovery.
