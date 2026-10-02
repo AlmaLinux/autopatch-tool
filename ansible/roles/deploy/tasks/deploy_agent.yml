@@ -12,9 +12,12 @@
     src: "../../agent"
     dest: "{{ deploy_source_path }}"
 
+# --no-cache: the Containerfile installs Claude Code from npm unpinned, and a
+# cached layer would keep the CLI from the first build forever -- too old to
+# know the models the agent files name.
 - name: Build agent container image
   command: >
-    podman build
+    podman build --no-cache
     -t {{ deploy_agent_image }}
     -f {{ deploy_source_path }}/agent/Containerfile
     {{ deploy_source_path }}

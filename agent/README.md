@@ -225,8 +225,12 @@ podman run -it \
 ### Manual image build
 
 ```bash
-podman build -t autopatch-agent -f agent/Containerfile .
+podman build --no-cache -t autopatch-agent -f agent/Containerfile .
 ```
+
+`--no-cache` matters: Claude Code is installed from npm unpinned, so a cached
+layer keeps an old CLI that may not know the model the agent files name.
+Ansible always builds this way.
 
 ### Manual test run
 

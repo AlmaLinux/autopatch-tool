@@ -130,7 +130,9 @@ above. Agent variables are only set when `deploy_agent_enabled` is true.
 ## AI agent container
 
 When the agent is enabled, the recovery container must be built (Ansible does
-this) and Claude Code must have credentials.
+this) and Claude Code must have credentials. Ansible rebuilds the image with
+`--no-cache` on every deploy, so each deploy also installs the latest Claude
+Code CLI.
 
 **Token (default).** Generate a long-lived token once on a machine with a Claude
 subscription and store it in the vault; the role deploys it to
