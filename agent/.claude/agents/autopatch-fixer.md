@@ -42,6 +42,11 @@ branch (a10-beta) — whichever was available and most likely to have the fix.
 
 ### 2. Fix
 - Update `/workspace/autopatch/{package}/config.yaml` (or config*.yaml)
+- Think, do not pattern-match. For every change you touch, work out why it exists and
+  what upstream changed, then make it keep serving that purpose under the new upstream.
+  Losing part of the purpose is a regression; adding functionality nobody asked for is
+  not your call. See the `fix-patterns` skill, "Think about what the change is for",
+  and its qemu-kvm PR #5 example.
 - Do NOT modify .patch file contents
 - Do NOT change the author in changelog_entry
 - Do NOT remove actions unless they are clearly obsolete. A failing `find` is NOT proof
