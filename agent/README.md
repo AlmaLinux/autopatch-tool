@@ -92,7 +92,7 @@ Additional restrictions in `.claude/settings.json`:
 |------|-------------|
 | `src/agent_handler.py` | Flask entry point: builds the error context, launches the background process |
 | `src/agent_orchestrator.py` | Full pipeline: clone → container → push → log → Slack |
-| `src/tools/slack.py` | Slack client with the `agent_result_message()` helper |
+| `src/tools/slack.py` | Slack client with the `agent_result_message()` and `agent_deprecate_message()` helpers |
 
 ## Data flows
 
@@ -136,6 +136,23 @@ On `success: false`:
 }
 ```
 
+When every action that changes the package is obsolete (upstream ships it all),
+only the `.alma.N` suffix and a changelog entry would remain. The agent then
+proposes retiring the config instead of fixing it:
+
+```json
+{
+  "success": false,
+  "deprecate": true,
+  "summary": "Upstream 153.5.0 ESR ships both AlmaLinux changes itself"
+}
+```
+
+The orchestrator pushes nothing and opens no PR. Instead, it posts
+`agent_deprecate_message()` to Slack: a proposal to rename the config branch
+(`a9` → `a9-deprecated`) with the agent's `summary`. A maintainer does the
+rename. `deprecate` wins over `success`.
+
 ### Branch (created by the host)
 
 If `success: true` and not a dry-run, the orchestrator:
@@ -155,6 +172,7 @@ Every run is recorded in `/var/log/autopatch/agent_runs.jsonl`:
   "package": "httpd",
   "branch": "c9",
   "success": true,
+  "deprecate": false,
   "branch_name": "agent-fix/c9-20260325-143000",
   "summary": "Updated find string...",
   "duration_sec": 180,

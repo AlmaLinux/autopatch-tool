@@ -119,3 +119,31 @@ def agent_result_message(
         channel=CHAT_NAME,
         text=message
     )
+
+
+def agent_deprecate_message(
+    package: str,
+    branch: str,
+    config_branch: str,
+    summary: str,
+    dry_run: bool = False,
+):
+    """Propose retiring a config that has nothing left to patch.
+
+    A branch rename cannot travel in a PR, so the proposal goes to Slack only
+    and a maintainer does the rename.
+    """
+    prefix = "[dry-run] " if dry_run else ""
+    message = (
+        f"{prefix}Agent proposes deprecating the autopatch config of `{package}` "
+        f"(webhook branch `{branch}`): rename `{config_branch}` to "
+        f"`{config_branch}-deprecated`.\n"
+        f"Why: {summary}\n"
+        f"No PR was opened. Once the branch is renamed, autopatch-tool stops "
+        f"patching `{package}` on `{config_branch}`. "
+        f"Branches: https://git.almalinux.org/autopatch/{package}/branches"
+    )
+    client.chat_postMessage(
+        channel=CHAT_NAME,
+        text=message
+    )

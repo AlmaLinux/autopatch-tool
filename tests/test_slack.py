@@ -54,6 +54,32 @@ class TestAgentResultMessage:
         assert "compare/a9...agent-fix/a9-1" in text
 
 
+class TestAgentDeprecateMessage:
+
+    def test_proposes_the_rename(self, mocker):
+        mock_post = _capture(mocker)
+
+        slack.agent_deprecate_message(
+            "firefox", "c9", "a9", summary="upstream ships both changes",
+        )
+
+        text = mock_post.call_args[1]["text"]
+        assert "rename `a9` to `a9-deprecated`" in text
+        assert "upstream ships both changes" in text
+        assert "No PR was opened" in text
+        assert "autopatch/firefox/branches" in text
+        assert "dry-run" not in text
+
+    def test_dry_run_is_marked(self, mocker):
+        mock_post = _capture(mocker)
+
+        slack.agent_deprecate_message(
+            "firefox", "c9", "a9", summary="x", dry_run=True,
+        )
+
+        assert mock_post.call_args[1]["text"].startswith("[dry-run] ")
+
+
 class TestAgentAuthFailedMessage:
     """The alert must name the remedy for the credential actually in use."""
 

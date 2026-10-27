@@ -133,6 +133,41 @@ Before writing `success: true`, for every action you removed or changed:
 3. If the changelog still promises an effect your config no longer produces (e.g. "Add
    x86_64_v2 support"), that is a regression -- fix the config, not the changelog.
 
+## Nothing left to patch: propose deprecating the config
+
+Sometimes every action that changes the package turns out to be obsolete, because
+upstream now ships all of it. What is left is only AlmaLinux bookkeeping: the
+`modify_release` suffix (`.alma.1`) and a `changelog_entry` with nothing real to say
+("Rebuild for AlmaLinux"). A config like that does nothing useful. It only renames an
+unmodified upstream build. AlmaLinux retires such a config by renaming its branch
+(`a9` -> `a9-deprecated`). After that, autopatch-tool stops reading it, and the package
+is built from the upstream import as is.
+
+A PR cannot rename a branch, so do not deliver a stripped-down config. Propose the
+deprecation instead: write `"success": false, "deprecate": true` (see the
+`autopatch-fixer` result format). The orchestrator then opens no PR and posts the rename
+proposal to Slack, and a maintainer does the rename. Anything you changed in
+`config.yaml` is not committed.
+
+Propose it only when all of the following hold:
+- you have shown, for **every** action other than `modify_release` and
+  `changelog_entry`, that its purpose is now realized by upstream (see "Verify the effect
+  survives"). A failing `find` alone proves nothing;
+- no `add_files`, `delete_files`, `run_script` or patch in `files/` is left that still
+  changes the build;
+- the config is not also needed for a branch it is shared with (e.g. a `config-*.yaml`
+  with its own `custom_target_branch` in the same repo).
+
+If even one action still serves its purpose, fix the config as usual and set
+`"success": true`.
+
+Example, firefox `a9` (PR #1): the c9 import was rebased to 153.5.0 ESR. The wasi-sdk
+workaround the `replace` action tuned is gone upstream, and upstream added the
+`gcc-toolset-%{gts_version}-gcc-c++` BuildRequires itself. The agent removed both
+actions and opened a PR that left only `.alma.1` and "Rebuild for AlmaLinux".
+A maintainer closed the PR and renamed `a9` to `a9-deprecated` by hand. The right
+result was a deprecation proposal.
+
 ## ActionNotAppliedError in `delete_line`
 
 The target line is no longer present in the spec.

@@ -966,6 +966,63 @@ class TestRunPipeline:
         # Maintainers are told the PR was blocked on the beta target branch.
         assert mock_slack.call_args[1]["pr_blocked"] == "a9-beta"
 
+    def test_deprecate_proposal_goes_to_slack_without_a_pr(self, mocker, tmp_path):
+        """A config with nothing left to patch is proposed for a rename, not PR'd."""
+        result = {"success": False, "deprecate": True,
+                  "summary": "upstream ships both changes"}
+        mocker.patch("src.agent_orchestrator._clone_repos", return_value=True)
+        mocker.patch("src.agent_orchestrator._checkout_branches",
+                     return_value="a9")
+        mocker.patch("src.agent_orchestrator._checkout_reference_branch",
+                     return_value=None)
+        mocker.patch("src.agent_orchestrator._run_container",
+                     side_effect=_fake_container(result))
+        mock_push = mocker.patch("src.agent_orchestrator._commit_and_push")
+        mock_pr = mocker.patch("src.agent_orchestrator._create_pull_request")
+        mock_log = mocker.patch("src.agent_orchestrator._write_log")
+        mock_slack = mocker.patch("src.agent_orchestrator._send_slack")
+        mock_deprecate = mocker.patch(
+            "src.agent_orchestrator._send_deprecate_slack")
+
+        run_pipeline(
+            "firefox", "c9",
+            {"error_type": "ActionNotAppliedError"},
+            log_path=str(tmp_path / "agent_runs.jsonl"),
+        )
+
+        mock_push.assert_not_called()
+        mock_pr.assert_not_called()
+        mock_slack.assert_not_called()
+        mock_deprecate.assert_called_once_with(
+            "firefox", "c9", "a9", result, False,
+        )
+        assert mock_log.call_args[0][3]["deprecate"] is True
+
+    def test_deprecate_wins_over_success(self, mocker, tmp_path):
+        """Even with success set, a deprecation proposal pushes nothing."""
+        mocker.patch("src.agent_orchestrator._clone_repos", return_value=True)
+        mocker.patch("src.agent_orchestrator._checkout_branches",
+                     return_value="a9")
+        mocker.patch("src.agent_orchestrator._checkout_reference_branch",
+                     return_value=None)
+        mocker.patch("src.agent_orchestrator._run_container",
+                     side_effect=_fake_container(
+                         {"success": True, "deprecate": True, "summary": "x"}))
+        mock_push = mocker.patch("src.agent_orchestrator._commit_and_push")
+        mocker.patch("src.agent_orchestrator._write_log")
+        mocker.patch("src.agent_orchestrator._send_slack")
+        mock_deprecate = mocker.patch(
+            "src.agent_orchestrator._send_deprecate_slack")
+
+        run_pipeline(
+            "firefox", "c9",
+            {"error_type": "ActionNotAppliedError"},
+            log_path=str(tmp_path / "agent_runs.jsonl"),
+        )
+
+        mock_push.assert_not_called()
+        mock_deprecate.assert_called_once()
+
     def test_clone_failure_logs_and_returns(self, mocker, tmp_path):
         mocker.patch("src.agent_orchestrator._clone_repos", return_value=False)
         mock_log = mocker.patch("src.agent_orchestrator._write_log")

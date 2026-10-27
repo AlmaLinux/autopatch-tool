@@ -43,6 +43,9 @@ Your job is ONLY to:
 3. Write the result to `/workspace/result/agent_result.json`
 
 The host system handles all git push and PR creation after the container exits.
+When the config has nothing left to patch, the result is a deprecation proposal
+(`"deprecate": true`) instead: the host opens no PR and posts the proposed
+branch rename to Slack.
 
 ## Authentication
 

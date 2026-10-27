@@ -87,4 +87,18 @@ branch (a10-beta) — whichever was available and most likely to have the fix.
     (e.g. `` `GOAMD64=v3` ``, `` `%if %{race}` ``).
 - If the fix failed or the error requires manual intervention (e.g. patch regeneration),
   set `"success": false` and explain why in `summary`.
+- If every action that changes the package is obsolete, so that only the
+  `modify_release` suffix and a `changelog_entry` would remain, propose deprecating the
+  config branch instead of delivering the empty config. See the `fix-patterns` skill,
+  "Nothing left to patch: propose deprecating the config":
+  ```json
+  {
+    "success": false,
+    "deprecate": true,
+    "summary": "Upstream 153.5.0 ESR ships both AlmaLinux changes itself; only the release suffix and changelog would remain",
+    "analysis": "- The wasi-sdk workaround the `replace` action tuned is gone upstream\n- Upstream added `BuildRequires: gcc-toolset-%{gts_version}-gcc-c++` itself"
+  }
+  ```
+  No PR is opened. The orchestrator posts the proposal to rename `$CONFIG_BRANCH` to
+  `$CONFIG_BRANCH-deprecated` to Slack, so `summary` must say why on its own.
 - If $DRY_RUN == "true": analyze and write the result, but do NOT modify config.yaml.

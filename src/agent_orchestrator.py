@@ -658,6 +658,7 @@ def _write_log(
         "package": package,
         "branch": branch,
         "success": result_data.get("success", False),
+        "deprecate": bool(result_data.get("deprecate")),
         "branch_name": branch_name,
         "pr_url": pr_url,
         "summary": result_data.get("summary", ""),
@@ -702,6 +703,31 @@ def _send_slack(
             config_branch=config_branch,
             pr_url=pr_url,
             pr_blocked=pr_blocked,
+        )
+    except Exception as exc:
+        logger.error("Slack notification failed: %s", exc)
+
+
+def _send_deprecate_slack(
+    package: str,
+    branch: str,
+    config_branch: str,
+    result_data: dict,
+    dry_run: bool,
+) -> None:
+    """Send the agent's proposal to rename *config_branch* to its
+    ``-deprecated`` name, replacing the generic agent-result message."""
+    if tools_slack is None:
+        logger.warning("tools.slack not available, skipping notification")
+        return
+
+    try:
+        tools_slack.agent_deprecate_message(
+            package=package,
+            branch=branch,
+            config_branch=config_branch,
+            summary=result_data.get("summary", "unknown"),
+            dry_run=dry_run,
         )
     except Exception as exc:
         logger.error("Slack notification failed: %s", exc)
@@ -867,7 +893,15 @@ def run_pipeline(
         branch_name = None
         pr_url = None
         pr_blocked = None
-        if result_data.get("success") and not is_dry_run:
+        deprecate = bool(result_data.get("deprecate"))
+        if deprecate:
+            # Nothing is left to patch, and a PR cannot rename the config
+            # branch: nothing is pushed, a maintainer renames it from Slack.
+            logger.info(
+                "Agent proposes deprecating %s on %s — no PR opened",
+                config_branch, package,
+            )
+        elif result_data.get("success") and not is_dry_run:
             logger.info("Committing and pushing fix for %s/%s...", package, branch)
             branch_name = _commit_and_push(
                 work_dir, package, branch, config_branch, result_data,
@@ -922,6 +956,9 @@ def run_pipeline(
                    branch_name, is_dry_run, start_ts, pr_url)
         if auth_failed:
             _send_auth_slack(auth_volume, image, package, branch)
+        elif deprecate:
+            _send_deprecate_slack(package, branch, config_branch, result_data,
+                                  is_dry_run)
         else:
             _send_slack(package, branch, result_data, branch_name, is_dry_run,
                         pr_target_branch, pr_url, pr_blocked=pr_blocked)
