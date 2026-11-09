@@ -301,7 +301,7 @@ class TestConfigPushRestart:
             "head_commit": {
                 "message": (
                     "Merge pull request 'Forward port' (#42) "
-                    "from almalinux/qemu-kvm:a9-beta into a9"
+                    "from a9-beta into a9"
                 ),
             },
         }
@@ -310,6 +310,34 @@ class TestConfigPushRestart:
 
         assert resp.status_code == 200
         mock_apply.assert_not_called()
+
+    def test_rebuilds_on_pr_merge_from_fork_branch_named_like_config(
+        self, client, mocker,
+    ):
+        """A fork's branch named after a config branch (ykohut/...:a10) is a
+        contributor's fix, not a forward-merge, and must trigger a rebuild."""
+        mod = _webserv_mod(client)
+        mock_apply = mocker.patch.object(
+            mod, "apply_modifications", return_value=mod.SUCCESS,
+        )
+        mocker.patch.object(mod.tools_slack, "success_message")
+        payload = {
+            **CONFIG_PUSH_PAYLOAD,
+            "ref": "refs/heads/a10",
+            "head_commit": {
+                "message": (
+                    "Merge pull request 'Use systemd-sulogin-shell form' (#5) "
+                    "from ykohut/autopatch-scap-security-guide:a10 into a10"
+                ),
+            },
+        }
+
+        resp = _post_config_push(client, payload)
+
+        assert resp.status_code == 200
+        mock_apply.assert_called_once_with(
+            "qemu-kvm", "c10", target_branch="a10",
+        )
 
     def test_rebuilds_on_merge_from_non_config_branch(self, client, mocker):
         """A merge from an agent-fix branch into a config branch is a real fix
@@ -378,11 +406,17 @@ class TestGetMergeSourceBranch:
                 "Merge pull request 'Title' (#1) from a9-beta into a9",
                 "a9-beta",
             ),
-            # Gitea PR merge, cross-repo (owner/repo:branch)
+            # Gitea PR merge from a fork: the owner/repo prefix is kept so a
+            # fork branch named like a config branch is not taken for one
             (
-                "Merge pull request 'Title' (#1) "
-                "from almalinux/qemu-kvm:a9-beta into a9",
-                "a9-beta",
+                "Merge pull request 'Title' (#5) "
+                "from ykohut/autopatch-scap-security-guide:a10 into a10",
+                "ykohut/autopatch-scap-security-guide:a10",
+            ),
+            # Gitea PR merge from a fork that was deleted since
+            (
+                "Merge pull request 'Title' (#5) from <deleted>:a10 into a10",
+                "<deleted>:a10",
             ),
             # PR merge from an agent-fix branch
             (

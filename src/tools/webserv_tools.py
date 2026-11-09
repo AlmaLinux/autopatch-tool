@@ -99,7 +99,8 @@ def get_pushed_branch(
 # structured merge metadata, so the source branch is recovered from the
 # message of the head commit:
 #   * Gitea PR merge: "Merge pull request '<title>' (#N) from <head> into <base>"
-#     where <head> is "owner/repo:branch" (cross-repo) or just "branch".
+#     where <head> is just "branch" for a PR inside the same repo, and
+#     "owner/repo:branch" (or "<deleted>:branch") for a PR from a fork.
 #   * plain git merge: "Merge branch 'branch' into <base>" / "Merge branch 'branch'".
 _PR_MERGE_RE = re.compile(r"^Merge pull request .* from (\S+?)(?: into \S+)?$")
 _GIT_MERGE_RE = re.compile(r"^Merge branch '([^']+)'")
@@ -115,6 +116,12 @@ def get_merge_source_branch(
     merges between config branches (e.g. ``a9-beta`` -> ``a9``) while still
     rebuilding on merges from non-config branches (e.g. ``agent-fix/*``) and
     on plain direct pushes (which have no merge commit -> '').
+
+    A PR from a fork is returned with its ``owner/repo:`` prefix intact
+    (``ykohut/autopatch-scap-security-guide:a10``). A fork's branch is never
+    one of our config branches, even when it is named like one, and its
+    changes have not triggered a rebuild yet, so the prefix must survive for
+    ``is_config_branch`` to reject it and let the merge rebuild.
     """
     head_commit = payload.get('head_commit') or {}
     message = head_commit.get('message') or ''
@@ -122,8 +129,7 @@ def get_merge_source_branch(
 
     pr_match = _PR_MERGE_RE.match(first_line)
     if pr_match:
-        # Strip an optional "owner/repo:" prefix; the branch is after the colon.
-        return pr_match.group(1).split(':')[-1]
+        return pr_match.group(1)
 
     git_match = _GIT_MERGE_RE.match(first_line)
     if git_match:
