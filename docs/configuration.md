@@ -320,6 +320,13 @@ repo's `scripts/` directory.
 
 The script is run with `bash`; a non-zero exit fails the run.
 
+The rpms tree is a git checkout and does not contain the source tarballs
+listed in its `sources` file. A script that needs one can fetch it with
+`alma_get_sources -i sources` (from `almalinux-git-utils`, installed by the
+Ansible deploy), which downloads it from sources.almalinux.org and verifies
+its checksum. Remove the tarball afterwards, or download it into a temporary
+directory, so it does not end up in the pushed branch.
+
 ### `add_line`
 
 Insert content into a specific spec section.

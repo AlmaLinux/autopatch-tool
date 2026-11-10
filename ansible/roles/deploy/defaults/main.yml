@@ -20,6 +20,10 @@ deploy_python_packages:
   - GitPython==3.1.60
   - git+https://github.com/AlmaLinux/immudb-wrapper.git@0.1.5#egg=immudb_wrapper
   - googleapis-common-protos==1.66.0
+  # alma_get_sources, for run_script scripts that need a package's Source0
+  # tarball (e.g. lorax-templates-rhel on a10). PyPI only has 0.0.1, which
+  # cannot read the "SHA512 (file) = hash" format of a dist-git `sources` file.
+  - git+https://git.almalinux.org/almalinux/almalinux-git-utils.git@3a7c84896f2dcdbd6fc13fb5df11af43b92ec850#egg=almalinux-git-utils
 
 deploy_dnf_packages:
   - python3
