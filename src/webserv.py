@@ -54,6 +54,36 @@ app = Flask('almalinux-debranding-tool')
 HTTP_200_OK = 200
 HTTP_400_BAD_REQUEST = 400
 
+
+def _launch_agent(package: str, branch: str, err: Exception) -> None:
+    """Start the recovery agent for a failed debranding, if it is enabled.
+
+    ``branch`` is the upstream import branch (c9, c10s, ...): the orchestrator
+    checks it out in the rpms repo and maps it to the config branch the fix PR
+    targets. Never raises, so a broken agent cannot change the webhook answer.
+    """
+    if os.environ.get("AGENT_ENABLED", "").lower() != "true":
+        return
+    # The agent analyses one package on one branch, so it has nothing to
+    # work with when the failure happened before those were parsed.
+    if not package or not branch:
+        logger.error(
+            "Agent not launched, package or branch unknown: "
+            "repo name - %s, branch - %s", package, branch,
+        )
+        return
+    try:
+        from agent_handler import fire_agent
+    except ImportError:
+        from autopatch.agent_handler import fire_agent
+    try:
+        agent_pid = fire_agent(package, branch, err)
+        if agent_pid:
+            logger.info("Agent launched: pid %s", agent_pid)
+    except Exception as agent_err:
+        logger.error("Agent launch failed: %s", agent_err)
+
+
 @app.route(
     '/debrand_packages',
     methods=('POST',),
@@ -108,25 +138,7 @@ def debrand_packages():
     except Exception as err:
         logger.error(err)
         tools_slack.failed_message(repo_name, branch, str(err))
-        agent_enabled = os.environ.get("AGENT_ENABLED", "").lower() == "true"
-        # The agent analyses one package on one branch, so it has nothing to
-        # work with when the failure happened before those were parsed.
-        if agent_enabled and repo_name and branch:
-            try:
-                from agent_handler import fire_agent
-            except ImportError:
-                from autopatch.agent_handler import fire_agent
-            try:
-                agent_pid = fire_agent(repo_name, branch, err)
-                if agent_pid:
-                    logger.info("Agent launched: pid %s", agent_pid)
-            except Exception as agent_err:
-                logger.error("Agent launch failed: %s", agent_err)
-        elif agent_enabled:
-            logger.error(
-                "Agent not launched, package or branch unknown: "
-                "repo name - %s, branch - %s", repo_name, branch,
-            )
+        _launch_agent(repo_name, branch, err)
         return jsonify_response(
             result={'message': str(err)},
             status_code=HTTP_200_OK,
@@ -152,6 +164,10 @@ def autopatch_config_pushed():
     Non-config branches are intentionally ignored: this is what keeps the
     agent's ``agent-fix/*`` working branches from triggering a rebuild before
     their PR is merged.
+
+    A failed rebuild launches the recovery agent, the same as a failed
+    upstream push, so a merged fix that is still incomplete gets a follow-up
+    PR instead of only a Slack message.
     """
     package = ''
     config_branch = ''
@@ -234,6 +250,14 @@ def autopatch_config_pushed():
     except Exception as err:
         logger.error(err)
         tools_slack.failed_message(package, config_branch, str(err))
+        # A failed rebuild after a config push (typically a merged agent-fix
+        # PR that did not fully fix the package) gets a new agent run, just
+        # like an upstream push does. Only real config branches map back to an
+        # upstream branch; anything else never reaches the rebuild anyway.
+        if config_branch and is_config_branch(config_branch):
+            _launch_agent(
+                package, resolve_upstream_branch(config_branch), err,
+            )
         return jsonify_response(
             result={'message': str(err)},
             status_code=HTTP_200_OK,

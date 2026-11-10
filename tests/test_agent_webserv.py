@@ -379,6 +379,56 @@ class TestConfigPushRestart:
         assert args[0] == "qemu-kvm"
         assert args[1] == "a9-beta"
 
+    def test_failure_launches_agent(self, client, mocker, monkeypatch):
+        """A rebuild that fails after a config push (e.g. a merged agent-fix
+        PR that did not fully fix the package) must start a new agent run on
+        the upstream branch, so the fix PR targets the pushed config branch."""
+        monkeypatch.setenv("AGENT_ENABLED", "true")
+        mod = _webserv_mod(client)
+        err = RuntimeError("cp: cannot stat '80-rhel'")
+        mocker.patch.object(mod, "apply_modifications", side_effect=err)
+        mocker.patch.object(mod.tools_slack, "failed_message")
+        mock_fire = mocker.patch(_mod(client, "agent_handler.fire_agent"))
+
+        resp = _post_config_push(client, CONFIG_PUSH_PAYLOAD)
+
+        assert resp.status_code == 200
+        mock_fire.assert_called_once_with("qemu-kvm", "c9-beta", err)
+
+    def test_failure_skips_agent_when_disabled(
+        self, client, mocker, monkeypatch,
+    ):
+        monkeypatch.setenv("AGENT_ENABLED", "false")
+        mod = _webserv_mod(client)
+        mocker.patch.object(
+            mod, "apply_modifications", side_effect=RuntimeError("boom"),
+        )
+        mocker.patch.object(mod.tools_slack, "failed_message")
+        mock_fire = mocker.patch(_mod(client, "agent_handler.fire_agent"))
+
+        _post_config_push(client, CONFIG_PUSH_PAYLOAD)
+
+        mock_fire.assert_not_called()
+
+    def test_agent_crash_does_not_break_config_push_response(
+        self, client, mocker, monkeypatch,
+    ):
+        monkeypatch.setenv("AGENT_ENABLED", "true")
+        mod = _webserv_mod(client)
+        mocker.patch.object(
+            mod, "apply_modifications", side_effect=RuntimeError("boom"),
+        )
+        mocker.patch.object(mod.tools_slack, "failed_message")
+        mocker.patch(
+            _mod(client, "agent_handler.fire_agent"),
+            side_effect=Exception("agent crashed"),
+        )
+
+        resp = _post_config_push(client, CONFIG_PUSH_PAYLOAD)
+
+        assert resp.status_code == 200
+        assert resp.get_json()["success"] is False
+
 
 try:
     from autopatch.tools.webserv_tools import (
