@@ -323,3 +323,117 @@ def test_git_reset_to_base_branch():
 
     assert actual_commits[:len(expected_commits)] == expected_commits, "History of commits is incorrect"
     shutil.rmtree("test_repo")
+
+
+# --- commit() after merging upstream into the autopatch branch ---------------
+#
+# These tests reproduce the debranding flow on a local repository, without any
+# network access: debranding.apply_modifications() calls
+# reset_to_base_branch(upstream, target, no_commit=True), applies the actions
+# and then commit(). The "upstream" branch plays the role of cXs and the
+# "target" branch the role of aXs.
+
+UPSTREAM = "c10s"
+TARGET = "a10s"
+UPSTREAM_SPEC = "Name: pkg\nVersion: 1.0\nRelease: %autorelease\n"
+
+
+def _git(repo_path, *args) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=repo_path, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _debrand(repo_path):
+    # Stand-in for config.apply_actions(): a deterministic edit of the spec.
+    spec = repo_path / "pkg.spec"
+    spec.write_text(spec.read_text().replace("Release: %autorelease", "Release: %autorelease -e alma.1"))
+
+
+def _autopatch(repo_path) -> bool:
+    repo = GitRepository(str(repo_path), clone=False, local_repo=True)
+    repo.reset_to_base_branch(UPSTREAM, TARGET, no_commit=True)
+    _debrand(repo_path)
+    return repo.commit(["Debrand for AlmaLinux"], "AlmaLinux Autopatch", "packager@almalinux.org")
+
+
+@pytest.fixture
+def debranded_repo(tmp_path):
+    """A repo whose target branch already contains the debranded upstream."""
+    repo_path = tmp_path / "pkg"
+    repo_path.mkdir()
+    _git(repo_path, "init", "-q", "-b", UPSTREAM)
+    _git(repo_path, "config", "user.name", "Test")
+    _git(repo_path, "config", "user.email", "test@example.org")
+    _git(repo_path, "config", "commit.gpgsign", "false")
+    (repo_path / "pkg.spec").write_text(UPSTREAM_SPEC)
+    _git(repo_path, "add", ".")
+    _git(repo_path, "commit", "-q", "-m", "Import pkg-1.0-1")
+
+    # The target branch forks from upstream and carries its own commit.
+    _git(repo_path, "checkout", "-q", "-b", TARGET)
+    (repo_path / "README.md").write_text("AlmaLinux branch\n")
+    _git(repo_path, "add", "README.md")
+    _git(repo_path, "commit", "-q", "-m", "Initial AlmaLinux commit")
+    # Upstream moves on, so the first autopatch run has something to merge.
+    _git(repo_path, "checkout", "-q", UPSTREAM)
+    (repo_path / "sources").write_text("SHA512 (pkg-1.0.tar.gz) = 0\n")
+    _git(repo_path, "add", "sources")
+    _git(repo_path, "commit", "-q", "-m", "Import pkg-1.0-2")
+
+    assert _autopatch(repo_path) is True
+    assert _git(repo_path, "rev-parse", f"{TARGET}^2") == _git(repo_path, "rev-parse", UPSTREAM)
+    yield repo_path
+
+
+def test_commit_records_merge_of_upstream_commit_without_file_changes(debranded_repo):
+    # Upstream adds an empty commit (e.g. "RHEL-xxxx: Trigger pkg promotion");
+    # %autorelease bumps Release, but no file changes.
+    _git(debranded_repo, "checkout", "-q", UPSTREAM)
+    _git(debranded_repo, "commit", "-q", "--allow-empty", "-m", "Trigger pkg promotion")
+    upstream_head = _git(debranded_repo, "rev-parse", "HEAD")
+    target_before = _git(debranded_repo, "rev-parse", TARGET)
+
+    assert _autopatch(debranded_repo) is True
+
+    head = _git(debranded_repo, "rev-parse", "HEAD")
+    assert head != target_before
+    assert _git(debranded_repo, "rev-parse", TARGET) == head
+    # A real merge commit: target history first, upstream HEAD second.
+    assert _git(debranded_repo, "rev-parse", "HEAD^1") == target_before
+    assert _git(debranded_repo, "rev-parse", "HEAD^2") == upstream_head
+    # Debranding result is unchanged, and the merge is concluded.
+    assert _git(debranded_repo, "diff", "--stat", target_before, head) == ""
+    assert "alma.1" in (debranded_repo / "pkg.spec").read_text()
+    assert not (debranded_repo / ".git" / "MERGE_HEAD").exists()
+    assert _git(debranded_repo, "status", "--porcelain") == ""
+
+
+def test_commit_skips_when_upstream_already_merged(debranded_repo):
+    # Regression for 863e383: re-running on an already merged upstream is a
+    # no-op -- no commit, so the caller skips tag/push/notarize.
+    target_before = _git(debranded_repo, "rev-parse", TARGET)
+
+    assert _autopatch(debranded_repo) is False
+
+    assert _git(debranded_repo, "rev-parse", TARGET) == target_before
+    assert not (debranded_repo / ".git" / "MERGE_HEAD").exists()
+
+
+def test_commit_records_merge_of_upstream_file_changes(debranded_repo):
+    _git(debranded_repo, "checkout", "-q", UPSTREAM)
+    spec = debranded_repo / "pkg.spec"
+    spec.write_text(UPSTREAM_SPEC.replace("1.0", "1.1"))
+    _git(debranded_repo, "commit", "-q", "-am", "Update to 1.1")
+    upstream_head = _git(debranded_repo, "rev-parse", "HEAD")
+    target_before = _git(debranded_repo, "rev-parse", TARGET)
+
+    assert _autopatch(debranded_repo) is True
+
+    assert _git(debranded_repo, "rev-parse", "HEAD^1") == target_before
+    assert _git(debranded_repo, "rev-parse", "HEAD^2") == upstream_head
+    assert _git(debranded_repo, "show", "HEAD:pkg.spec") == (
+        "Name: pkg\nVersion: 1.1\nRelease: %autorelease -e alma.1"
+    )
+    assert _git(debranded_repo, "log", "-1", "--format=%s") == "Debrand for AlmaLinux"
+    assert _git(debranded_repo, "status", "--porcelain") == ""

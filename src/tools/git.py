@@ -111,11 +111,19 @@ class GitRepository:
         Stage all changes and create a commit.
 
         Returns ``True`` when a commit was created and ``False`` when there was
-        nothing to commit (the tree already matches HEAD). ``git commit`` exits
-        non-zero with an empty stderr in that case, which :func:`run_command`
-        would otherwise turn into a fatal ``RuntimeError``. Callers use the
-        return value to skip tagging and pushing on a no-op run -- e.g. a
-        package that is already debranded for the current upstream state.
+        nothing to commit (the tree already matches HEAD and no merge is in
+        progress). ``git commit`` exits non-zero with an empty stderr in that
+        case, which :func:`run_command` would otherwise turn into a fatal
+        ``RuntimeError``. Callers use the return value to skip tagging and
+        pushing on a no-op run -- e.g. a package that is already debranded for
+        the current upstream state.
+
+        A merge in progress (``MERGE_HEAD`` exists) is always committed, even
+        when the resulting tree is identical to HEAD: upstream may add commits
+        that change no files (e.g. an empty "Trigger promotion" commit whose
+        only effect is a new ``%autorelease`` value and import tag). Recording
+        the merge keeps the upstream commit in the target branch's history and
+        lets the caller tag and push the new release.
         """
         self.run_in_repo("git", "add", ".")
         with DirectoryManager(self.name):
@@ -126,11 +134,21 @@ class GitRepository:
                 raise_on_failure=False,
                 without_log=True,
             )
+            merging = staged.returncode == 0 and run_command(
+                ["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"],
+                raise_on_failure=False,
+                without_log=True,
+            ).returncode == 0
         if staged.returncode == 0:
-            logger.info(f"Nothing to commit to {self.url}; skipping commit")
-            return False
-
-        logger.info(f"Committing changes to {self.url}")
+            if not merging:
+                logger.info(f"Nothing to commit to {self.url}; skipping commit")
+                return False
+            logger.info(
+                f"Upstream has new commits without file changes; "
+                f"recording the merge in {self.url}"
+            )
+        else:
+            logger.info(f"Committing changes to {self.url}")
         commit_messages = []
         for line in message:
             commit_messages.extend(["-m", line])
