@@ -6,6 +6,7 @@ After=network-online.target
 [Service]
 Environment="HOME={{ deploy_home_directory }}"
 Environment="AUTH_KEY={{ deploy_auth_key }}"
+Environment="AUTOPATCH_MAX_PARALLEL={{ deploy_max_parallel_jobs }}"
 {% if deploy_agent_enabled %}
 Environment="AGENT_ENABLED=true"
 Environment="AGENT_DRY_RUN={{ deploy_agent_dry_run | lower }}"
@@ -20,7 +21,7 @@ EnvironmentFile=-{{ deploy_claude_token_file }}
 {% endif %}
 Type=simple
 WorkingDirectory={{ deploy_source_path }}/src
-ExecStart=/usr/local/bin/gunicorn -w 2 --timeout 240 -b "0.0.0.0:{{ deploy_gunicorn_port }}" webserv:app
+ExecStart=/usr/local/bin/gunicorn -w {{ deploy_gunicorn_workers }} --timeout {{ deploy_gunicorn_timeout }} -b "0.0.0.0:{{ deploy_gunicorn_port }}" webserv:app
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=10

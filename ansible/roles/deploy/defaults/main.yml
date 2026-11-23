@@ -36,6 +36,19 @@ deploy_dnf_packages:
   - rpm-build
 
 deploy_gunicorn_port: 80
+deploy_gunicorn_workers: 2
+# Webhooks only check the package's config and queue a background job (see
+# src/debrand_job.py), so requests are short. Gunicorn SIGKILLs a worker whose
+# request runs longer than this, with nothing reported.
+deploy_gunicorn_timeout: 240
+# Debranding jobs that may run at the same time (AUTOPATCH_MAX_PARALLEL). Runs
+# of one package never overlap regardless of this. Keep it low: a kernel run
+# clones a large repository and the server has under 2 GB of RAM.
+deploy_max_parallel_jobs: 2
+
+# Swap file, in MB; 0 disables it.
+deploy_swap_size_mb: 1024
+deploy_swap_file: /swapfile
 
 deploy_systemd_services:
   almalinux-autopatch.service: restarted

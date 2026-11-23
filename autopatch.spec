@@ -48,6 +48,8 @@ A tool to automatically patch upstream content for use downstream
 %{python3_sitelib}/%{name}/tools/webserv_tools.py
 %{python3_sitelib}/%{name}/tools/__pycache__/webserv_tools.cpython*.pyc
 %{python3_sitelib}/%{name}/__pycache__/webserv.cpython*.pyc
+%{python3_sitelib}/%{name}/debrand_job.py
+%{python3_sitelib}/%{name}/__pycache__/debrand_job.cpython*.pyc
 
 %package core
 Summary:        Core components of the autopatch tool

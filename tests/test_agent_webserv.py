@@ -1,4 +1,8 @@
-"""Integration tests for agent invocation from webserv.py.
+"""Tests for the webhook handlers in webserv.py.
+
+The handlers only check that the package has a config and queue a
+background job (debrand_job.enqueue); the job itself is tested in
+test_debrand_job.py.
 
 webserv.py has deep import chains (debranding -> git -> immudb_wrapper).
 We stub those modules before importing webserv so the tests don't need
@@ -116,72 +120,79 @@ def _webserv_mod(client):
     return sys.modules[name]
 
 
-class TestAgentIntegration:
+IMPORT_TAG_PAYLOAD = {
+    "repository": {"name": "httpd"},
+    "ref": "refs/tags/imports/c9/httpd-2.4.62-4.el9",
+}
 
-    def test_calls_fire_agent_on_exception(self, client, mocker, monkeypatch):
-        monkeypatch.setenv("AGENT_ENABLED", "true")
 
-        mocker.patch(
-            _mod(client, "webserv.apply_modifications"),
-            side_effect=RuntimeError("Action not applied"),
+@pytest.fixture
+def queue(client, mocker):
+    """Mock the config lookup (package configured) and the job launch."""
+    mod = _webserv_mod(client)
+    mocks = types.SimpleNamespace(
+        find=mocker.patch.object(
+            mod, "find_config_branch", return_value=("a9", ""),
+        ),
+        enqueue=mocker.patch.object(mod, "enqueue"),
+        failed=mocker.patch.object(mod.tools_slack, "failed_message"),
+    )
+    return mocks
+
+
+class TestUpstreamPush:
+
+    def test_queues_job_for_import_tag(self, client, queue):
+        resp = _post(client, IMPORT_TAG_PAYLOAD)
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["message"] == _webserv_mod(client).QUEUED
+        queue.find.assert_called_once_with("httpd", "c9", "")
+        queue.enqueue.assert_called_once_with(
+            "httpd", "c9", target_branch="", report_branch="c9",
         )
-        mocker.patch(_mod(client, "webserv.tools_slack.failed_message"))
-        mock_fire = mocker.patch(
-            _mod(client, "agent_handler.fire_agent"), return_value="cid123"
-        )
+        queue.failed.assert_not_called()
 
-        _post(client)
+    def test_unconfigured_package_is_not_queued(self, client, queue):
+        """A push of a package without a config answers at once and starts
+        no job, so a mass import does not spawn a process per package."""
+        queue.find.return_value = ("", "Package is not modified")
 
-        mock_fire.assert_called_once()
-        args = mock_fire.call_args[0]
-        assert args[0] == "httpd"
-        assert isinstance(args[2], RuntimeError)
+        resp = _post(client, IMPORT_TAG_PAYLOAD)
 
-    def test_skips_agent_when_disabled(self, client, mocker, monkeypatch):
-        monkeypatch.setenv("AGENT_ENABLED", "false")
+        assert resp.status_code == 200
+        assert resp.get_json()["message"] == "Package is not modified"
+        queue.enqueue.assert_not_called()
 
-        mocker.patch(
-            _mod(client, "webserv.apply_modifications"),
-            side_effect=RuntimeError("fail"),
-        )
-        mocker.patch(_mod(client, "webserv.tools_slack.failed_message"))
+    def test_modified_branch_push_is_skipped(self, client, queue):
+        resp = _post(client, {
+            "repository": {"name": "httpd"},
+            "ref": "refs/tags/changed/a9/httpd-2.4.62-4.el9",
+        })
+
+        assert resp.get_json()["success"] is False
+        queue.enqueue.assert_not_called()
+
+    def test_enqueue_failure_is_reported(self, client, queue, mocker):
+        queue.enqueue.side_effect = RuntimeError("fork failed")
         mock_fire = mocker.patch(_mod(client, "agent_handler.fire_agent"))
 
-        _post(client)
+        resp = _post(client, IMPORT_TAG_PAYLOAD)
 
+        assert resp.status_code == 200
+        assert resp.get_json()["success"] is False
+        queue.failed.assert_called_once_with("httpd", "c9", "fork failed")
+        # Not a config problem: nothing for the agent to fix.
         mock_fire.assert_not_called()
 
-    def test_agent_crash_does_not_break_response(
-        self, client, mocker, monkeypatch
-    ):
-        monkeypatch.setenv("AGENT_ENABLED", "true")
-
-        mocker.patch(
-            _mod(client, "webserv.apply_modifications"),
-            side_effect=RuntimeError("fail"),
-        )
-        mocker.patch(_mod(client, "webserv.tools_slack.failed_message"))
-        mocker.patch(
-            _mod(client, "agent_handler.fire_agent"),
-            side_effect=Exception("agent crashed"),
-        )
-
-        _post(client)
-        # If we got here without an unhandled exception,
-        # the agent crash was properly caught.
-
-    def test_bare_ref_payload_is_skipped(self, client, mocker, monkeypatch):
+    def test_bare_ref_payload_is_skipped(self, client, queue):
         """Gitea create/delete events send a bare ref, not refs/.../<branch>.
 
         Such a payload has no branch to debrand: it must be answered with a
         plain "nothing to sync" instead of failing the whole request.
         """
-        monkeypatch.setenv("AGENT_ENABLED", "true")
-        mod = _webserv_mod(client)
-        mock_apply = mocker.patch.object(mod, "apply_modifications")
-        mock_failed = mocker.patch.object(mod.tools_slack, "failed_message")
-        mock_fire = mocker.patch(_mod(client, "agent_handler.fire_agent"))
-
         resp = _post(
             client, {"repository": {"name": "httpd"}, "ref": "c10s"},
         )
@@ -189,81 +200,75 @@ class TestAgentIntegration:
         assert resp is not None
         assert resp.status_code == 200
         assert resp.get_json()["success"] is False
-        mock_apply.assert_not_called()
-        mock_failed.assert_not_called()
-        mock_fire.assert_not_called()
+        queue.find.assert_not_called()
+        queue.enqueue.assert_not_called()
+        queue.failed.assert_not_called()
 
     def test_payload_failure_is_reported_not_raised(
-        self, client, mocker, monkeypatch
+        self, client, queue, mocker,
     ):
         """A crash before the payload is parsed must still reach Slack.
 
         repo_name/branch are only assigned inside the try block, so the
         except block used to raise UnboundLocalError and lose the report.
         """
-        monkeypatch.setenv("AGENT_ENABLED", "true")
         mod = _webserv_mod(client)
         mocker.patch.object(
             mod,
             "get_name_from_payload",
             side_effect=ValueError("malformed payload"),
         )
-        mock_failed = mocker.patch.object(mod.tools_slack, "failed_message")
-        mock_fire = mocker.patch(_mod(client, "agent_handler.fire_agent"))
 
         resp = _post(client)
 
         assert resp is not None
         assert resp.status_code == 200
         assert resp.get_json()["success"] is False
-        mock_failed.assert_called_once_with("", "", "malformed payload")
-        # Nothing for the agent to analyse without a package and branch.
-        mock_fire.assert_not_called()
+        queue.failed.assert_called_once_with("", "", "malformed payload")
+        queue.enqueue.assert_not_called()
 
 
 class TestConfigPushRestart:
 
-    def test_restart_on_config_branch_push(self, client, mocker):
-        mod = _webserv_mod(client)
-        mock_apply = mocker.patch.object(
-            mod, "apply_modifications", return_value=mod.SUCCESS,
-        )
-        mock_success = mocker.patch.object(mod.tools_slack, "success_message")
-
+    def test_restart_on_config_branch_push(self, client, queue):
         resp = _post_config_push(client, CONFIG_PUSH_PAYLOAD)
 
         assert resp.status_code == 200
+        assert resp.get_json()["message"] == _webserv_mod(client).QUEUED
         # upstream branch reconstructed from the pushed config branch
         # (a9-beta -> c9-beta), config branch passed through as target_branch.
-        mock_apply.assert_called_once_with(
-            "qemu-kvm", "c9-beta", target_branch="a9-beta",
+        queue.find.assert_called_once_with("qemu-kvm", "c9-beta", "a9-beta")
+        queue.enqueue.assert_called_once_with(
+            "qemu-kvm", "c9-beta",
+            target_branch="a9-beta", report_branch="a9-beta",
         )
-        mock_success.assert_called_once_with("qemu-kvm", "a9-beta")
 
-    def test_ignored_when_branch_deleted(self, client, mocker):
-        mod = _webserv_mod(client)
-        mock_apply = mocker.patch.object(mod, "apply_modifications")
+    def test_unconfigured_branch_is_not_queued(self, client, queue):
+        queue.find.return_value = ("", "Branch is not modified")
+
+        resp = _post_config_push(client, CONFIG_PUSH_PAYLOAD)
+
+        assert resp.get_json()["message"] == "Branch is not modified"
+        queue.enqueue.assert_not_called()
+
+    def test_ignored_when_branch_deleted(self, client, queue):
         payload = {**CONFIG_PUSH_PAYLOAD, "deleted": True}
 
         resp = _post_config_push(client, payload)
 
         assert resp.status_code == 200
-        mock_apply.assert_not_called()
+        queue.enqueue.assert_not_called()
 
-    def test_ignored_when_tag_push(self, client, mocker):
-        mod = _webserv_mod(client)
-        mock_apply = mocker.patch.object(mod, "apply_modifications")
+    def test_ignored_when_tag_push(self, client, queue):
         payload = {**CONFIG_PUSH_PAYLOAD, "ref": "refs/tags/changed/a9/x-1.0"}
 
         resp = _post_config_push(client, payload)
 
         assert resp.status_code == 200
-        mock_apply.assert_not_called()
+        queue.enqueue.assert_not_called()
 
-    def test_ignored_for_non_config_branches(self, client, mocker):
+    def test_ignored_for_non_config_branches(self, client, queue):
         """Upstream import, agent-fix and feature branches are ignored."""
-        mod = _webserv_mod(client)
-        mock_apply = mocker.patch.object(mod, "apply_modifications")
         for branch in (
             "c9",                              # upstream import branch
             "agent-fix/a9-beta-20260601",      # agent working branch
@@ -274,13 +279,11 @@ class TestConfigPushRestart:
             resp = _post_config_push(client, payload)
             assert resp.status_code == 200
 
-        mock_apply.assert_not_called()
+        queue.enqueue.assert_not_called()
 
-    def test_ignored_on_merge_between_config_branches(self, client, mocker):
+    def test_ignored_on_merge_between_config_branches(self, client, queue):
         """Forward-merging a config branch into another (a9-beta -> a9) must
         not retrigger a rebuild on the target branch."""
-        mod = _webserv_mod(client)
-        mock_apply = mocker.patch.object(mod, "apply_modifications")
         payload = {
             **CONFIG_PUSH_PAYLOAD,
             "ref": "refs/heads/a9",
@@ -290,11 +293,9 @@ class TestConfigPushRestart:
         resp = _post_config_push(client, payload)
 
         assert resp.status_code == 200
-        mock_apply.assert_not_called()
+        queue.enqueue.assert_not_called()
 
-    def test_ignored_on_pr_merge_between_config_branches(self, client, mocker):
-        mod = _webserv_mod(client)
-        mock_apply = mocker.patch.object(mod, "apply_modifications")
+    def test_ignored_on_pr_merge_between_config_branches(self, client, queue):
         payload = {
             **CONFIG_PUSH_PAYLOAD,
             "ref": "refs/heads/a9",
@@ -309,18 +310,13 @@ class TestConfigPushRestart:
         resp = _post_config_push(client, payload)
 
         assert resp.status_code == 200
-        mock_apply.assert_not_called()
+        queue.enqueue.assert_not_called()
 
     def test_rebuilds_on_pr_merge_from_fork_branch_named_like_config(
-        self, client, mocker,
+        self, client, queue,
     ):
         """A fork's branch named after a config branch (ykohut/...:a10) is a
         contributor's fix, not a forward-merge, and must trigger a rebuild."""
-        mod = _webserv_mod(client)
-        mock_apply = mocker.patch.object(
-            mod, "apply_modifications", return_value=mod.SUCCESS,
-        )
-        mocker.patch.object(mod.tools_slack, "success_message")
         payload = {
             **CONFIG_PUSH_PAYLOAD,
             "ref": "refs/heads/a10",
@@ -335,18 +331,13 @@ class TestConfigPushRestart:
         resp = _post_config_push(client, payload)
 
         assert resp.status_code == 200
-        mock_apply.assert_called_once_with(
-            "qemu-kvm", "c10", target_branch="a10",
+        queue.enqueue.assert_called_once_with(
+            "qemu-kvm", "c10", target_branch="a10", report_branch="a10",
         )
 
-    def test_rebuilds_on_merge_from_non_config_branch(self, client, mocker):
+    def test_rebuilds_on_merge_from_non_config_branch(self, client, queue):
         """A merge from an agent-fix branch into a config branch is a real fix
         landing and must still trigger a rebuild."""
-        mod = _webserv_mod(client)
-        mock_apply = mocker.patch.object(
-            mod, "apply_modifications", return_value=mod.SUCCESS,
-        )
-        mocker.patch.object(mod.tools_slack, "success_message")
         payload = {
             **CONFIG_PUSH_PAYLOAD,
             "head_commit": {
@@ -360,74 +351,22 @@ class TestConfigPushRestart:
         resp = _post_config_push(client, payload)
 
         assert resp.status_code == 200
-        mock_apply.assert_called_once_with(
-            "qemu-kvm", "c9-beta", target_branch="a9-beta",
+        queue.enqueue.assert_called_once_with(
+            "qemu-kvm", "c9-beta",
+            target_branch="a9-beta", report_branch="a9-beta",
         )
 
-    def test_failure_notifies_slack(self, client, mocker):
-        mod = _webserv_mod(client)
-        mocker.patch.object(
-            mod, "apply_modifications", side_effect=RuntimeError("boom"),
-        )
-        mock_failed = mocker.patch.object(mod.tools_slack, "failed_message")
-
-        resp = _post_config_push(client, CONFIG_PUSH_PAYLOAD)
-
-        assert resp.status_code == 200
-        mock_failed.assert_called_once()
-        args = mock_failed.call_args[0]
-        assert args[0] == "qemu-kvm"
-        assert args[1] == "a9-beta"
-
-    def test_failure_launches_agent(self, client, mocker, monkeypatch):
-        """A rebuild that fails after a config push (e.g. a merged agent-fix
-        PR that did not fully fix the package) must start a new agent run on
-        the upstream branch, so the fix PR targets the pushed config branch."""
-        monkeypatch.setenv("AGENT_ENABLED", "true")
-        mod = _webserv_mod(client)
-        err = RuntimeError("cp: cannot stat '80-rhel'")
-        mocker.patch.object(mod, "apply_modifications", side_effect=err)
-        mocker.patch.object(mod.tools_slack, "failed_message")
-        mock_fire = mocker.patch(_mod(client, "agent_handler.fire_agent"))
-
-        resp = _post_config_push(client, CONFIG_PUSH_PAYLOAD)
-
-        assert resp.status_code == 200
-        mock_fire.assert_called_once_with("qemu-kvm", "c9-beta", err)
-
-    def test_failure_skips_agent_when_disabled(
-        self, client, mocker, monkeypatch,
-    ):
-        monkeypatch.setenv("AGENT_ENABLED", "false")
-        mod = _webserv_mod(client)
-        mocker.patch.object(
-            mod, "apply_modifications", side_effect=RuntimeError("boom"),
-        )
-        mocker.patch.object(mod.tools_slack, "failed_message")
-        mock_fire = mocker.patch(_mod(client, "agent_handler.fire_agent"))
-
-        _post_config_push(client, CONFIG_PUSH_PAYLOAD)
-
-        mock_fire.assert_not_called()
-
-    def test_agent_crash_does_not_break_config_push_response(
-        self, client, mocker, monkeypatch,
-    ):
-        monkeypatch.setenv("AGENT_ENABLED", "true")
-        mod = _webserv_mod(client)
-        mocker.patch.object(
-            mod, "apply_modifications", side_effect=RuntimeError("boom"),
-        )
-        mocker.patch.object(mod.tools_slack, "failed_message")
-        mocker.patch(
-            _mod(client, "agent_handler.fire_agent"),
-            side_effect=Exception("agent crashed"),
-        )
+    def test_failure_notifies_slack(self, client, queue):
+        queue.find.side_effect = RuntimeError("Gitea API is down")
 
         resp = _post_config_push(client, CONFIG_PUSH_PAYLOAD)
 
         assert resp.status_code == 200
         assert resp.get_json()["success"] is False
+        queue.failed.assert_called_once_with(
+            "qemu-kvm", "a9-beta", "Gitea API is down",
+        )
+        queue.enqueue.assert_not_called()
 
 
 try:

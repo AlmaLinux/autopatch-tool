@@ -95,7 +95,8 @@ autopatch-tool/
 ├── src/                       # core library + web service + agent host side
 │   ├── actions_handler.py     #   config parser + action engine (the core)
 │   ├── debranding.py          #   end-to-end orchestration
-│   ├── webserv.py             #   Flask webhook server
+│   ├── webserv.py             #   Flask webhook server (queues jobs)
+│   ├── debrand_job.py         #   background debranding job, per-package lock
 │   └── tools/                 #   rpm, git, branch, slack, helpers
 ├── agent/                     # AI recovery container (Claude Code)
 ├── ansible/                   # deployment role

@@ -61,6 +61,28 @@ Prints `Config is valid` or the first validation error.
 gunicorn -w 2 --timeout 240 -b 0.0.0.0:80 webserv:app   # run from src/
 ```
 
+A webhook does not debrand inside the request. It checks that the package has
+a config for the branch (two Gitea API calls) and, if so, starts a background
+job, [`src/debrand_job.py`](../src/debrand_job.py), and answers
+`Debranding queued`. A debranding of a large package such as the kernel takes
+several minutes, longer than gunicorn lets a request live; a worker killed on
+`--timeout` used to lose the run with no Slack message and no agent.
+
+The job runs detached from the gunicorn worker and logs to the service
+journal. Before it starts it takes two `flock` locks in `AUTOPATCH_LOCK_DIR`:
+
+- a lock per package, so runs of one package never overlap: a config push and
+  an upstream import arriving together run one after the other instead of
+  racing on `git push` and `git tag`. Waiting runs are not ordered; each
+  rebuilds from the current config and upstream state, so the order does not
+  change the result;
+- one of `AUTOPATCH_MAX_PARALLEL` run slots, which caps how many packages are
+  debranded at once.
+
+The job sends the Slack message and, on failure, launches the recovery agent.
+Restarting the service (every deploy does) kills running and waiting jobs,
+since they live in the service's cgroup: redeliver their webhooks afterwards.
+
 Endpoints (both require the `X-Gitea-Signature` HMAC header, verified against
 `AUTH_KEY`):
 
@@ -74,6 +96,8 @@ Endpoints (both require the `X-Gitea-Signature` HMAC header, verified against
 | Variable | Used by | Meaning |
 |----------|---------|---------|
 | `AUTH_KEY` | webserv | Shared secret for Gitea webhook HMAC. **Required.** |
+| `AUTOPATCH_MAX_PARALLEL` | debrand job | Debranding jobs that may run at once (default 2). |
+| `AUTOPATCH_LOCK_DIR` | debrand job | Directory for the job lock files (default `/tmp/autopatch-locks`). |
 | `ALLOW_NOTARIZATION` | git tools | `false` disables immudb verify/notarize (default `true`). |
 | `AGENT_ENABLED` | webserv | `true` enables the AI recovery agent on failure. |
 | `AGENT_DRY_RUN` | agent | `true` = analyze only, no branch/PR. |
@@ -92,9 +116,11 @@ Credentials read from files: immudb/CAS at `~/.cas/credentials`; Slack token at
 
 ## Ansible deployment
 
-The [`ansible/`](../ansible) role installs dependencies, deploys the source,
+The [`ansible/`](../ansible) role installs dependencies, adds a swap file
+(`deploy_swap_size_mb`, 1024 by default; 0 skips it), deploys the source,
 saves secrets, optionally builds the agent image, and creates the systemd
-service.
+service. `deploy_gunicorn_workers`, `deploy_gunicorn_timeout` and
+`deploy_max_parallel_jobs` tune the service.
 
 ### 1. Define secrets
 

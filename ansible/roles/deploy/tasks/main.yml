@@ -2,6 +2,10 @@
 - name: Deploy common actions
   include_tasks: common_actions.yml
 
+- name: Set up swap
+  include_tasks: swap.yml
+  when: deploy_swap_size_mb | int > 0
+
 - name: Save secret credentials
   include_tasks: save_secret_credentials.yml
 

@@ -1,0 +1,46 @@
+---
+# Swap file for the debranding and agent runs: the server has under 2 GB of
+# RAM, and a kernel debranding clones a large repository. Set
+# deploy_swap_size_mb to 0 to skip. Changing the size later does not resize an
+# existing file: swapoff and remove it, then deploy again.
+
+- name: Check whether the swap file exists
+  stat:
+    path: "{{ deploy_swap_file }}"
+  register: deploy_swap_file_stat
+
+- name: Create the swap file
+  command: >-
+    dd if=/dev/zero of={{ deploy_swap_file }}
+    bs=1M count={{ deploy_swap_size_mb }}
+  when: not deploy_swap_file_stat.stat.exists
+  register: deploy_swap_created
+
+- name: Restrict swap file permissions and label it for SELinux
+  file:
+    path: "{{ deploy_swap_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+    # Without swapfile_t the file keeps the default etc_runtime_t label and
+    # systemd may be denied swapon at boot.
+    setype: swapfile_t
+
+- name: Format the swap file
+  command: mkswap {{ deploy_swap_file }}
+  when: deploy_swap_created is changed
+
+- name: List active swap
+  command: swapon --show=NAME --noheadings
+  register: deploy_swap_active
+  changed_when: false
+
+- name: Enable the swap file
+  command: swapon {{ deploy_swap_file }}
+  when: deploy_swap_file not in deploy_swap_active.stdout_lines
+
+- name: Enable the swap file at boot
+  lineinfile:
+    path: /etc/fstab
+    regexp: '^{{ deploy_swap_file }}\s'
+    line: "{{ deploy_swap_file }} none swap defaults 0 0"

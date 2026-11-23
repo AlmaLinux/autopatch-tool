@@ -1,5 +1,4 @@
 import json
-import os
 from flask import (
     Response,
     Flask,
@@ -12,10 +11,8 @@ from werkzeug.exceptions import (
 # First try importing via site-packages path, then try directly from "src"
 try:
     from autopatch.tools.logger import logger
-    from autopatch.debranding import (
-        apply_modifications,
-        SUCCESS
-    )
+    from autopatch.debranding import find_config_branch
+    from autopatch.debrand_job import enqueue
     from autopatch.tools.webserv_tools import (
         auth_key_required,
         jsonify_response,
@@ -31,10 +28,8 @@ try:
     import autopatch.tools.slack as tools_slack
 except ImportError:
     from tools.logger import logger
-    from debranding import (
-        apply_modifications,
-        SUCCESS
-    )
+    from debranding import find_config_branch
+    from debrand_job import enqueue
     from tools.webserv_tools import (
         auth_key_required,
         jsonify_response,
@@ -54,34 +49,40 @@ app = Flask('almalinux-debranding-tool')
 HTTP_200_OK = 200
 HTTP_400_BAD_REQUEST = 400
 
+QUEUED = "Debranding queued"
 
-def _launch_agent(package: str, branch: str, err: Exception) -> None:
-    """Start the recovery agent for a failed debranding, if it is enabled.
 
-    ``branch`` is the upstream import branch (c9, c10s, ...): the orchestrator
-    checks it out in the rpms repo and maps it to the config branch the fix PR
-    targets. Never raises, so a broken agent cannot change the webhook answer.
+def _queue(
+    package: str,
+    upstream_branch: str,
+    target_branch: str = "",
+    report_branch: str = "",
+):
+    """Queue a debranding job and build the webhook answer.
+
+    The debranding itself runs in a background job (see debrand_job): it can
+    take minutes, longer than gunicorn lets a request live. Only the cheap
+    check whether the package has a config for the branch runs here, so a
+    push of a package without one answers at once and starts nothing.
     """
-    if os.environ.get("AGENT_ENABLED", "").lower() != "true":
-        return
-    # The agent analyses one package on one branch, so it has nothing to
-    # work with when the failure happened before those were parsed.
-    if not package or not branch:
-        logger.error(
-            "Agent not launched, package or branch unknown: "
-            "repo name - %s, branch - %s", package, branch,
+    _, not_modified = find_config_branch(
+        package, upstream_branch, target_branch,
+    )
+    if not_modified:
+        return jsonify_response(
+            result={'message': not_modified},
+            status_code=HTTP_200_OK,
         )
-        return
-    try:
-        from agent_handler import fire_agent
-    except ImportError:
-        from autopatch.agent_handler import fire_agent
-    try:
-        agent_pid = fire_agent(package, branch, err)
-        if agent_pid:
-            logger.info("Agent launched: pid %s", agent_pid)
-    except Exception as agent_err:
-        logger.error("Agent launch failed: %s", agent_err)
+    enqueue(
+        package,
+        upstream_branch,
+        target_branch=target_branch,
+        report_branch=report_branch,
+    )
+    return jsonify_response(
+        result={'message': QUEUED},
+        status_code=HTTP_200_OK,
+    )
 
 
 @app.route(
@@ -122,23 +123,12 @@ def debrand_packages():
                 success=False,
             )
 
-        result = apply_modifications(
-            repo_name,
-            branch,
-        )
-        if result == SUCCESS:
-            tools_slack.success_message(repo_name, branch)
-
-        return jsonify_response(
-            result={
-                'message': result,
-            },
-            status_code=HTTP_200_OK,
-        )
+        return _queue(repo_name, branch, report_branch=branch)
     except Exception as err:
+        # Only the config lookup and the job launch run here; a failure of
+        # the debranding itself is reported by the job.
         logger.error(err)
         tools_slack.failed_message(repo_name, branch, str(err))
-        _launch_agent(repo_name, branch, err)
         return jsonify_response(
             result={'message': str(err)},
             status_code=HTTP_200_OK,
@@ -165,9 +155,9 @@ def autopatch_config_pushed():
     agent's ``agent-fix/*`` working branches from triggering a rebuild before
     their PR is merged.
 
-    A failed rebuild launches the recovery agent, the same as a failed
-    upstream push, so a merged fix that is still incomplete gets a follow-up
-    PR instead of only a Slack message.
+    The rebuild runs as a background job, like one for an upstream push. A
+    failed rebuild launches the recovery agent, so a merged fix that is still
+    incomplete gets a follow-up PR instead of only a Slack message.
     """
     package = ''
     config_branch = ''
@@ -233,31 +223,15 @@ def autopatch_config_pushed():
             package, config_branch, upstream_branch,
         )
 
-        result = apply_modifications(
+        return _queue(
             package,
             upstream_branch,
             target_branch=config_branch,
-        )
-        if result == SUCCESS:
-            tools_slack.success_message(package, config_branch)
-
-        return jsonify_response(
-            result={
-                'message': result,
-            },
-            status_code=HTTP_200_OK,
+            report_branch=config_branch,
         )
     except Exception as err:
         logger.error(err)
         tools_slack.failed_message(package, config_branch, str(err))
-        # A failed rebuild after a config push (typically a merged agent-fix
-        # PR that did not fully fix the package) gets a new agent run, just
-        # like an upstream push does. Only real config branches map back to an
-        # upstream branch; anything else never reaches the rebuild anyway.
-        if config_branch and is_config_branch(config_branch):
-            _launch_agent(
-                package, resolve_upstream_branch(config_branch), err,
-            )
         return jsonify_response(
             result={'message': str(err)},
             status_code=HTTP_200_OK,

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import shutil
 import tempfile
@@ -29,18 +31,26 @@ def get_config_files(autopatch_path: str, package: str) -> list[str]:
     return config_files
 
 
-def apply_modifications(
-    package,
-    branch,
-    set_custom_tag: str = "",
-    no_tag: bool = False,
+def find_config_branch(
+    package: str,
+    branch: str,
     target_branch: str = "",
-):
+) -> tuple[str, str]:
+    """Find the autopatch config branch that debrands ``branch``.
+
+    Returns ``(config_branch, "")`` when the package has a config for it, or
+    ``("", reason)`` with :data:`PACKAGE_NOT_MODIFIED` or
+    :data:`BRANCH_NOT_MODIFIED` when there is nothing to debrand. A beta
+    branch falls back to the config of its stable branch.
+
+    Only two Gitea API calls, no clone: the webhook runs it before queueing
+    a job, so pushes of packages without a config never start one.
+    """
     config_branch = al_branch = resolve_config_branch(branch, target_branch)
 
     if package not in GitAlmaLinux.get_list_of_modified_packages():
         logger.info(f"Package {package} is not modified")
-        return PACKAGE_NOT_MODIFIED
+        return "", PACKAGE_NOT_MODIFIED
 
     config_branches = GitAlmaLinux.get_branches_from_package(package)
 
@@ -49,7 +59,24 @@ def apply_modifications(
 
     if config_branch not in config_branches:
         logger.info(f"Branch {al_branch} does not exist")
-        return BRANCH_NOT_MODIFIED
+        return "", BRANCH_NOT_MODIFIED
+
+    return config_branch, ""
+
+
+def apply_modifications(
+    package,
+    branch,
+    set_custom_tag: str = "",
+    no_tag: bool = False,
+    target_branch: str = "",
+):
+    al_branch = resolve_config_branch(branch, target_branch)
+    config_branch, not_modified = find_config_branch(
+        package, branch, target_branch,
+    )
+    if not_modified:
+        return not_modified
 
     # Isolate every run in its own working directory. Debranding of a single
     # package can run concurrently -- e.g. separate gunicorn workers handling a
