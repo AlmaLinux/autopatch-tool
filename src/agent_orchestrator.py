@@ -28,6 +28,9 @@ import requests
 
 AGENT_LOG_DIR = "/var/log/autopatch/agent"
 WORK_DIR_TTL_SEC = 3600
+# Large dist-git repos (rpms/kernel) take 1.5-3 minutes to clone on the server,
+# longer while debranding runs clone the same repo in parallel.
+CLONE_TIMEOUT_SEC = 900
 
 # What Claude Code prints when the stored OAuth session can no longer be used.
 # Matched against container output because the entrypoint still writes a
@@ -144,9 +147,17 @@ def _clone_repos(work_dir: str, package: str) -> bool:
         result = run_command(
             ["git", "clone", url, dest],
             raise_on_failure=False,
-            timeout=120,
+            timeout=CLONE_TIMEOUT_SEC,
         )
-        if result is None or result.returncode != 0:
+        if result is None:
+            # run_command swallows the exception (a timeout, most often) and
+            # returns None, so name it here or the run log has no reason.
+            logger.error(
+                "Cloning %s failed or timed out after %ss", url, CLONE_TIMEOUT_SEC,
+            )
+            return False
+        if result.returncode != 0:
+            logger.error("Cloning %s failed: %s", url, result.stderr.strip())
             return False
     return True
 
